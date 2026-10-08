@@ -12,7 +12,7 @@ Maatwerk-JavaScript voor de Webflow-site van OZOverbindzorg ([ozoverbindzorg.nl]
 Site settings → Footer, op de plek van het oude Slater-script:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v1.1.0/main.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v1.1.1/main.min.js"></script>
 ```
 
 `main.min.js` wordt door jsDelivr automatisch verkleind uit `main.js`. GSAP, ScrollTrigger en Observer komen van Webflow zelf (Site settings → GSAP); Lenis, Swiper, Finsweet en Vimeo laadt `main.js` alleen waar nodig.

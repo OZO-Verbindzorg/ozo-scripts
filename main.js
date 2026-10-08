@@ -1182,7 +1182,8 @@
 
   // Vimeo background video
   function initVimeoBackground() {
-    const VIMEO_SDK = "https://player.vimeo.com/api/player.js";
+    // Officiële Vimeo Player SDK via jsDelivr (vaste versie): zelfde API, maar geen cookies van player.vimeo.com
+    const VIMEO_SDK = "https://cdn.jsdelivr.net/npm/@vimeo/player@2.30.4/dist/player.min.js";
 
     // Load Vimeo Player SDK if it isn't on the page yet
     function loadVimeoSDK(callback) {
