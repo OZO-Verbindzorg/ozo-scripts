@@ -2172,8 +2172,8 @@
       gsap.registerPlugin(Observer, ScrollTrigger);
     }
 
-    // Elk onderdeel apart: een fout in het ene stopt de rest niet
-    [
+    // Elk onderdeel apart: een fout in het ene stopt de rest niet (namen blijven leesbaar na minify)
+    const parts = {
       initLenis,
       initCopyrightYear,
       initFinsweet,
@@ -2189,12 +2189,13 @@
       initHeroWave,
       initNumberOdometer,
       initWavyMarquee,
-      initLapostaForms
-    ].forEach((fn) => {
+      initLapostaForms,
+    };
+    Object.keys(parts).forEach((name) => {
       try {
-        fn();
+        parts[name]();
       } catch (err) {
-        console.error('[OZO] ' + fn.name, err);
+        console.error('[OZO] ' + name, err);
       }
     });
   }

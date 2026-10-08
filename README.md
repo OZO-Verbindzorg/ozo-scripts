@@ -4,24 +4,18 @@ Maatwerk-JavaScript voor de Webflow-site van OZOverbindzorg ([ozoverbindzorg.nl]
 
 ## Status
 
-- `src/` bevat de scripts zoals ze op 8 oktober 2026 in Slater stonden (project 9398), ongewijzigd.
-- `loader.js` laadt ze 1-op-1 met dezelfde pagina-regels als Slater (`slater/_loader-staging.js`). Dit is de tussenstap (v0.x).
-- Daarna worden ze samengevoegd en opgeschoond tot één `main.js` (v1.0.0).
+- `main.js`: alle maatwerkcode in één bestand (vanaf v1.0.0). Elk onderdeel start alleen als zijn element op de pagina staat.
+- `src/` + `loader.js`: de oorspronkelijke Slater-bestanden, 1-op-1 (v0.1.0). Blijft staan als referentie tot v1 live draait.
 
-## Laden in Webflow (v0.x)
+## Laden in Webflow
 
-In Site settings → Footer, op de plek van het Slater-script:
+Site settings → Footer, op de plek van het oude Slater-script:
 
 ```html
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  var s = document.createElement("script");
-  s.type = "module";
-  s.src = "https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v0.1.0/loader.js";
-  document.body.appendChild(s);
-});
-</script>
+<script src="https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v1.0.1/main.min.js"></script>
 ```
+
+`main.min.js` wordt door jsDelivr automatisch verkleind uit `main.js`. GSAP, ScrollTrigger en Observer komen van Webflow zelf (Site settings → GSAP); Lenis, Swiper, Finsweet en Vimeo laadt `main.js` alleen waar nodig.
 
 ## Werkwijze
 
