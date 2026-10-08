@@ -1,7 +1,8 @@
 # Lokale werkbestanden (niet publiek)
 _slater/
 _crawl/
-ANALYSE.md
+ANALYSE*.md
+_psi/
 .DS_Store
 _backup/
 _test/
