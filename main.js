@@ -70,6 +70,27 @@
     if (document.querySelector('[fs-formsubmit-element]')) loadScript(LIBS.fsFormsubmit);
   }
 
+  // Freshchat (helpdesk-chat): pas laden bij de eerste interactie (scrollen, muis, toets, aanraking).
+  // Scheelt een zwaar script en cookies van derden bij het openen van elke pagina.
+  const FRESHCHAT = {
+    token: '89de7861-1a35-4cd5-92d4-c65af78e3c63',
+    host: 'https://ozoverbindzorg-help.freshchat.com'
+  };
+
+  function initFreshchat() {
+    const events = ['pointerdown', 'pointermove', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    let started = false;
+    function start() {
+      if (started) return;
+      started = true;
+      events.forEach((type) => window.removeEventListener(type, start));
+      loadScript(FRESHCHAT.host + '/js/widget.js').then(() => {
+        if (window.fcWidget) window.fcWidget.init(FRESHCHAT);
+      });
+    }
+    events.forEach((type) => window.addEventListener(type, start, { passive: true }));
+  }
+
   // ---------- Oude site (pagina's die nog niet vernieuwd zijn) ----------
 
   // Floating labels: label krijgt .float zolang het veld focus of een waarde heeft
@@ -140,7 +161,8 @@
     const present = Object.keys(SLIDERS).filter((selector) => document.querySelector(selector));
     if (!present.length) return;
     loadScript(LIBS.swiper).then(() => {
-      present.forEach((selector) => new Swiper(selector, SLIDERS[selector]));
+      // slideRole 'listitem': de Webflow-lijst (role="list") houdt geldige lijst-items (toegankelijkheid)
+      present.forEach((selector) => new Swiper(selector, { a11y: { slideRole: 'listitem' }, ...SLIDERS[selector] }));
     });
   }
 
@@ -169,7 +191,33 @@
       if (pauseButton) pauseButton.click();
     }
 
+    // Een gepauzeerde video hoeft niet te downloaden: bron weghalen tot er op play wordt geklikt.
+    // Alleen bij video's met een poster of die niet zichtbaar zijn, zodat er in beeld niets verandert.
+    function unload(video) {
+      const sources = video.querySelectorAll('source[src]');
+      if (!sources.length) return;
+      if (!video.getAttribute('poster') && video.getClientRects().length) return;
+      sources.forEach((source) => {
+        source.dataset.src = source.getAttribute('src');
+        source.removeAttribute('src');
+      });
+      video.removeAttribute('autoplay');
+      video.preload = 'none';
+      video.load();
+    }
+
+    function ensureLoaded(video) {
+      const pending = video.querySelectorAll('source[data-src]');
+      if (!pending.length) return;
+      pending.forEach((source) => {
+        source.setAttribute('src', source.dataset.src);
+        source.removeAttribute('data-src');
+      });
+      video.load();
+    }
+
     videos.forEach(reset);
+    videos.forEach(unload);
 
     videos.forEach((video) => {
       const playButton = button('play', video);
@@ -179,12 +227,27 @@
           videos.forEach((other) => {
             if (other !== video) reset(other);
           });
+          ensureLoaded(video);
           video.muted = false;
           video.play();
         });
       }
       if (pauseButton) pauseButton.addEventListener('click', () => stop(video));
     });
+  }
+
+  // Webflow-lightboxen krijgen aria-label="open lightbox", ook als de link zichtbare tekst heeft.
+  // Dan wijkt de voorgelezen naam af van wat je ziet: label weghalen zodat de tekst telt.
+  function initLightboxLabels() {
+    if (!document.querySelector('.w-lightbox')) return;
+    const fix = () => {
+      document.querySelectorAll('.w-lightbox[aria-label="open lightbox"]').forEach((link) => {
+        if (link.textContent.trim()) link.removeAttribute('aria-label');
+      });
+    };
+    fix();
+    window.Webflow = window.Webflow || [];
+    window.Webflow.push(fix);
   }
 
   // Zoekpagina: zoekterm uit de URL tonen en het zoekveld vooraf invullen
@@ -262,6 +325,8 @@
     );
     // Alleen op pagina's met het nieuwe menu
     if (!menuWrap || !navList || !dropWrapper || !dropContainer || !backdrop || !burger || !backBtn) return;
+    // Logo-link zonder tekst: naam voor schermlezers
+    if (logo && !logo.textContent.trim() && !logo.getAttribute("aria-label")) logo.setAttribute("aria-label", "OZO home");
     // State
     const state = {
       isOpen: false,
@@ -834,6 +899,16 @@
       isOpen = () => r.getAttribute("data-search-state") === "open",
       navOpen = () => w && w.getAttribute("data-menu-open") === "true";
     t.setAttribute("aria-expanded", "false");
+    // Toggle is een div: knop-rol + toetsenbord, anders is aria-expanded niet toegestaan
+    if (t.tagName !== "BUTTON") {
+      t.setAttribute("role", "button");
+      if (!t.hasAttribute("tabindex")) t.setAttribute("tabindex", "0");
+      t.addEventListener("keydown", e => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        isOpen() ? close(0) : open();
+      });
+    }
 
     function open() {
       if (navOpen()) document.dispatchEvent(new KeyboardEvent("keydown", {
@@ -1141,9 +1216,14 @@
         if (!vimeoVideoID) return;
         const iframe = vimeoElement.querySelector("iframe");
         if (!iframe) return;
+        // dnt=1: Vimeo zet geen tracking-cookies
         const vimeoVideoURL =
-          `https://player.vimeo.com/video/${vimeoVideoID}?api=1&background=1&autoplay=0&loop=1&muted=1`;
+          `https://player.vimeo.com/video/${vimeoVideoID}?api=1&background=1&autoplay=0&loop=1&muted=1&dnt=1`;
         iframe.setAttribute("src", vimeoVideoURL);
+        // Decoratieve achtergrondvideo: titel voor de iframe, maar niet voorlezen of focussen
+        iframe.setAttribute("title", "Achtergrondvideo");
+        iframe.setAttribute("aria-hidden", "true");
+        iframe.setAttribute("tabindex", "-1");
 
         // Assign an ID to each element
         const videoIndexID = "vimeo-bg-index-" + index;
@@ -1151,50 +1231,8 @@
 
         const player = new Vimeo.Player(videoIndexID);
 
-        let videoAspectRatio;
-
-        // Update Aspect Ratio if [data-vimeo-update-size="true"]
-        if (vimeoElement.getAttribute("data-vimeo-update-size") === "true") {
-          player.getVideoWidth().then(function (width) {
-            player.getVideoHeight().then(function (height) {
-              videoAspectRatio = height / width;
-              const beforeEl = vimeoElement.querySelector(".vimeo-bg__before");
-              if (beforeEl) {
-                beforeEl.style.paddingTop = videoAspectRatio * 100 + "%";
-              }
-            });
-          });
-        }
-
-        // Adjust video sizing
-        function adjustVideoSizing() {
-          const containerAspectRatio = (vimeoElement.offsetHeight / vimeoElement.offsetWidth) *
-            100;
-          const iframeWrapper = vimeoElement.querySelector(".vimeo-bg__iframe-wrapper");
-          if (iframeWrapper && videoAspectRatio) {
-            if (containerAspectRatio > videoAspectRatio * 100) {
-              iframeWrapper.style.width =
-                `${(containerAspectRatio / (videoAspectRatio * 100)) * 100}%`;
-            } else {
-              iframeWrapper.style.width = "";
-            }
-          }
-        }
-
-        // Adjust video sizing initially
-        if (vimeoElement.getAttribute("data-vimeo-update-size") === "true") {
-          adjustVideoSizing();
-          player.getVideoWidth().then(function () {
-            player.getVideoHeight().then(function () {
-              adjustVideoSizing();
-            });
-          });
-        } else {
-          adjustVideoSizing();
-        }
-
-        // Adjust video sizing on resize
-        window.addEventListener("resize", adjustVideoSizing);
+        // Formaat: de video vult de container via CSS (Site settings → Head, ".vimeo-bg"),
+        // niet meer via meten in JavaScript. Meten na het laden liet de hero verspringen (layout shift).
 
         // Loaded
         player.on("play", function () {
@@ -1945,7 +1983,8 @@
       const openedAt = Date.now();
       let busy = false;
 
-      loadLapostaPow(action.origin);
+      // Puzzelscript pas laden als iemand het formulier gebruikt (geen extra script + cookie bij elke paginaweergave)
+      form.addEventListener('focusin', () => loadLapostaPow(action.origin).catch(() => {}), { once: true });
 
       // Verborgen iframe: het formulier post hierin, zodat de pagina blijft staan
       const frame = document.createElement('iframe');
@@ -2068,7 +2107,7 @@
     if (token) {
       setLapostaField(form, 'subscribe-token', token.token);
       if (token.challenge) {
-        const solution = await solveLapostaPow(token.challenge);
+        const solution = await solveLapostaPow(token.challenge, action.origin);
         if (solution) setLapostaField(form, 'subscribe-pow', solution);
       }
     }
@@ -2145,17 +2184,18 @@
   }
 
   function loadLapostaPow(origin) {
-    if (window.LapostaPow || document.querySelector('script[data-laposta-pow]')) return;
-    const script = document.createElement('script');
-    script.src = origin + LAPOSTA_POW_PATH;
-    script.async = true;
-    script.setAttribute('data-laposta-pow', '');
-    document.head.appendChild(script);
+    if (window.LapostaPow) return Promise.resolve();
+    return loadScript(origin + LAPOSTA_POW_PATH);
   }
 
-  function solveLapostaPow(challenge) {
+  async function solveLapostaPow(challenge, origin) {
+    try {
+      await loadLapostaPow(origin);
+    } catch (err) {
+      return null;
+    }
+    if (!window.LapostaPow) return null;
     return new Promise((resolve) => {
-      if (!window.LapostaPow) return resolve(null);
       window.LapostaPow.solve(challenge.salt, challenge.difficulty, resolve, { maxMs: 8000 });
     });
   }
@@ -2177,9 +2217,11 @@
       initLenis,
       initCopyrightYear,
       initFinsweet,
+      initFreshchat,
       initFloatLabels,
       initSliders,
       initVideoButtons,
+      initLightboxLabels,
       initSearchTerm,
       initNavScroll,
       initMegaNavDirectionalHover,
