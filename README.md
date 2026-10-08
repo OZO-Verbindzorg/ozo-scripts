@@ -4,14 +4,23 @@ Maatwerk-JavaScript voor de Webflow-site van OZOverbindzorg ([ozoverbindzorg.nl]
 
 ## Status
 
-`slater/` bevat de scripts zoals ze op 8 oktober 2026 in Slater stonden (project 9398), ongewijzigd, als startpunt. Deze worden samengevoegd tot één `main.js`, dat via jsDelivr in Webflow wordt geladen en Slater vervangt.
+- `src/` bevat de scripts zoals ze op 8 oktober 2026 in Slater stonden (project 9398), ongewijzigd.
+- `loader.js` laadt ze 1-op-1 met dezelfde pagina-regels als Slater (`slater/_loader-staging.js`). Dit is de tussenstap (v0.x).
+- Daarna worden ze samengevoegd en opgeschoond tot één `main.js` (v1.0.0).
 
-## Laden in Webflow
+## Laden in Webflow (v0.x)
 
-Vaste versie (tag), als laatste script in Site settings → Footer:
+In Site settings → Footer, op de plek van het Slater-script:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v1.0.0/main.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var s = document.createElement("script");
+  s.type = "module";
+  s.src = "https://cdn.jsdelivr.net/gh/OZO-Verbindzorg/ozo-scripts@v0.1.0/loader.js";
+  document.body.appendChild(s);
+});
+</script>
 ```
 
 ## Werkwijze
