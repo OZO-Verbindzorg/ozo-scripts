@@ -4,3 +4,5 @@ _crawl/
 ANALYSE.md
 .DS_Store
 _backup/
+_test/
+.claude/
