@@ -1379,6 +1379,120 @@
     });
   }
 
+  // Bewegende blobs (zoals de golven): [data-blob-morph="hero-bg|hero-photo|video"] krijgt een
+  // gladde vorm als clip-path die langzaam meebeweegt. Vormen: straal per hoek (h) uit de
+  // Figma-vormen, geschaald naar het element (aff). data-blob-amp (uitslag, standaard 0.04) en
+  // data-blob-speed (standaard 0.5) regelen de beweging. In de Designer en zonder JS toont de
+  // mask uit Webflow dezelfde vorm stil; dit script zet die mask uit zodra het overneemt.
+  const BLOB_SHAPES = {
+    'hero-bg': {
+      h: [0.5773, 0.0303, -0.0186, 0.0836, 0.0265, -0.0074, -0.0645, -0.008, 0.0031, 0.0022, -0.0185, -0.0045, -0.0009],
+      aff: [0.6827, 0.4928, 0.9458, 0.4703]
+    },
+    'hero-photo': {
+      h: [0.5047, 0.0025, 0.0029, 0.0375, -0.0534, -0.0571, 0.0058, 0.0022, 0.0028, -0.0084, 0.0114, 0.0028, -0.0001],
+      aff: [0.85, 0.5546, 0.9409, 0.5245]
+    },
+    'video': {
+      h: [0.4675, 0.0041, -0.0275, 0.0039, -0.0599, -0.0273, 0.0461, 0.0076, -0.0006, 0.0111, 0.0064, -0.0002, -0.0034],
+      aff: [0.9427, 0.5317, 0.9672, 0.5806]
+    }
+  };
+
+  function initBlobMorph() {
+    const blobs = document.querySelectorAll('[data-blob-morph]');
+    if (!blobs.length) return;
+
+    const STEPS = 72; // punten rond de omtrek
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Vloeiende gesloten vorm: kwadratische bochten via de middens tussen de punten
+    function smoothClosedPath(pts) {
+      const f = (v) => v.toFixed(1);
+      const n = pts.length;
+      let mx = (pts[n - 1][0] + pts[0][0]) / 2;
+      let my = (pts[n - 1][1] + pts[0][1]) / 2;
+      let d = `M${f(mx)},${f(my)}`;
+      for (let i = 0; i < n; i++) {
+        const next = pts[(i + 1) % n];
+        mx = (pts[i][0] + next[0]) / 2;
+        my = (pts[i][1] + next[1]) / 2;
+        d += `Q${f(pts[i][0])},${f(pts[i][1])} ${f(mx)},${f(my)}`;
+      }
+      return d + 'Z';
+    }
+
+    blobs.forEach((el) => {
+      const shape = BLOB_SHAPES[el.getAttribute('data-blob-morph')];
+      if (!shape) return;
+
+      const amp = parseFloat(el.getAttribute('data-blob-amp')) || 0.04;
+      const speed = parseFloat(el.getAttribute('data-blob-speed')) || 0.5;
+      const [ax, bx, ay, by] = shape.aff;
+      const h = shape.h;
+      const harmonics = (h.length - 1) / 2;
+      const seed = Math.random() * 100; // elke blob beweegt anders
+      let width = el.offsetWidth;
+      let height = el.offsetHeight;
+      let lastTime = 0;
+
+      function render(time) {
+        lastTime = time;
+        const t = time * speed + seed;
+        const pts = [];
+        for (let n = 0; n < STEPS; n++) {
+          const a = (n / STEPS) * Math.PI * 2;
+          let r = h[0];
+          for (let k = 1; k <= harmonics; k++) {
+            r += h[2 * k - 1] * Math.cos(k * a) + h[2 * k] * Math.sin(k * a);
+          }
+          // Zachte golven die rond de vorm lopen (2, 3 en 4 bulten)
+          r += h[0] * amp * (
+            Math.sin(2 * a + t * 0.9) * 0.6 +
+            Math.sin(3 * a - t * 0.7 + 1.3) * 0.3 +
+            Math.sin(4 * a + t * 0.5 + 2.1) * 0.15
+          );
+          pts.push([(ax * r * Math.cos(a) + bx) * width, (ay * r * Math.sin(a) + by) * height]);
+        }
+        el.style.clipPath = `path('${smoothClosedPath(pts)}')`;
+      }
+
+      // De script-vorm vervangt de stilstaande mask uit Webflow
+      el.style.webkitMaskImage = 'none';
+      el.style.maskImage = 'none';
+      render(0);
+
+      new ResizeObserver(() => {
+        width = el.offsetWidth;
+        height = el.offsetHeight;
+        render(lastTime);
+      }).observe(el);
+
+      if (reduceMotion) return;
+
+      let running = false;
+      const start = performance.now();
+
+      function tick() {
+        if (!running) return;
+        render((performance.now() - start) / 1000);
+        requestAnimationFrame(tick);
+      }
+
+      // Alleen animeren als de blob in beeld is
+      new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !running) {
+            running = true;
+            requestAnimationFrame(tick);
+          } else if (!entry.isIntersecting) {
+            running = false;
+          }
+        });
+      }).observe(el);
+    });
+  }
+
   function initNumberOdometer() {
     if (!document.querySelector('[data-odometer-group]')) return
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -2303,6 +2417,7 @@
       initAdvancedFormValidation,
       initVimeoBackground,
       initHeroWave,
+      initBlobMorph,
       initNumberOdometer,
       initWavyMarquee,
       initVideoPopup,
