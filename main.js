@@ -1937,6 +1937,66 @@
     };
   }
 
+  // Video-popup (doelgroeppagina's): een knop met [data-dg-video-play] en data-vimeo-id="123456"
+  // opent die Vimeo-video in een <dialog>. Sluiten (Esc, kruisje of klik naast de video) haalt
+  // de iframe weg, zodat het geluid direct stopt. Opmaak staat in Global CSS v2 (.dg-video-dialog).
+  function initVideoPopup() {
+    const buttons = document.querySelectorAll('[data-dg-video-play][data-vimeo-id]');
+    if (!buttons.length) return;
+
+    let dialog = null;
+    let frame = null;
+    let lastButton = null;
+
+    function build() {
+      dialog = document.createElement('dialog');
+      dialog.className = 'dg-video-dialog';
+      dialog.setAttribute('aria-label', 'Video');
+      dialog.innerHTML =
+        '<button type="button" class="dg-video-dialog_close" aria-label="Video sluiten">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
+        '</button><div class="dg-video-dialog_frame"></div>';
+      frame = dialog.querySelector('.dg-video-dialog_frame');
+
+      dialog.querySelector('.dg-video-dialog_close').addEventListener('click', () => dialog.close());
+      // Klik naast de video (op de achtergrond) sluit ook
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.close();
+      });
+      dialog.addEventListener('close', () => {
+        frame.innerHTML = '';
+        if (window.lenis) window.lenis.start();
+        if (lastButton) lastButton.focus();
+      });
+      document.body.appendChild(dialog);
+    }
+
+    function open(button) {
+      const id = button.getAttribute('data-vimeo-id');
+      if (!/^\d+$/.test(id)) return;
+      if (!dialog) build();
+      lastButton = button;
+
+      // dnt=1: Vimeo zet geen tracking-cookies
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://player.vimeo.com/video/${id}?autoplay=1&dnt=1&title=0&byline=0&portrait=0`;
+      iframe.title = button.getAttribute('aria-label') || 'Video';
+      iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+      iframe.setAttribute('allowfullscreen', '');
+      frame.appendChild(iframe);
+
+      if (window.lenis) window.lenis.stop();
+      dialog.showModal();
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        open(button);
+      });
+    });
+  }
+
 
   // Laposta: custom formulier ([data-laposta-wrap]) versturen zoals Laposta's eigen validate.js:
   // eenmalig token + rekenpuzzel (spambeveiliging), dan een gewone formulierpost in een verborgen iframe.
@@ -2232,6 +2292,7 @@
       initHeroWave,
       initNumberOdometer,
       initWavyMarquee,
+      initVideoPopup,
       initLapostaForms,
     };
     Object.keys(parts).forEach((name) => {
