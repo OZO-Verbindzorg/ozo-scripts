@@ -2051,6 +2051,117 @@
     };
   }
 
+  // Voordelen-tabs (doelgroeppagina's): [data-dg-tabs] met knoppen [data-dg-tab] en panelen
+  // [data-dg-tab-panel] in dezelfde volgorde. Wisselt vanzelf (data-dg-duration in ms, standaard
+  // 6000); de lijn onder de actieve tab loopt mee als timer. Pauzeert bij hover, focus en buiten
+  // beeld. Overgangen staan in Global CSS v2 (panelen krijgen data-state="active|past|future").
+  let dgTabsCount = 0;
+
+  function initDgTabs() {
+    document.querySelectorAll('[data-dg-tabs]').forEach((root) => {
+      const tabs = [...root.querySelectorAll('[data-dg-tab]')];
+      const panels = [...root.querySelectorAll('[data-dg-tab-panel]')];
+      if (!tabs.length || tabs.length !== panels.length) return;
+
+      const duration = parseInt(root.getAttribute('data-dg-duration'), 10) || 6000;
+      const autoplay = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const bars = tabs.map((tab) => tab.querySelector('.dg-benefits_progress-bar'));
+      const prefix = `dg-tabs-${++dgTabsCount}`;
+      let current = 0;
+      let elapsed = 0;
+      let last = 0;
+      let running = false;
+      let inView = false;
+      let hovered = false;
+      let focused = false;
+
+      // Tabs en panelen aan elkaar koppelen voor schermlezers
+      tabs.forEach((tab, i) => {
+        tab.id = `${prefix}-tab-${i + 1}`;
+        panels[i].id = `${prefix}-panel-${i + 1}`;
+        tab.setAttribute('aria-controls', panels[i].id);
+        panels[i].setAttribute('aria-labelledby', tab.id);
+      });
+
+      function show(index) {
+        const prev = current;
+        current = (index + tabs.length) % tabs.length;
+        elapsed = 0;
+        tabs.forEach((tab, i) => {
+          const active = i === current;
+          tab.setAttribute('aria-selected', String(active));
+          tab.tabIndex = active ? 0 : -1;
+          if (bars[i]) bars[i].style.transform = `scaleX(${active && !autoplay ? 1 : 0})`;
+        });
+        panels.forEach((panel, i) => {
+          let state = 'future';
+          if (i === current) state = 'active';
+          else if (i === prev) state = 'past';
+          panel.setAttribute('data-state', state);
+          panel.setAttribute('aria-hidden', String(i !== current));
+        });
+      }
+
+      function tick(now) {
+        if (!inView) {
+          running = false;
+          return;
+        }
+        const dt = last ? Math.min(now - last, 100) : 0;
+        last = now;
+        if (!hovered && !focused && !document.hidden) {
+          elapsed += dt;
+          if (bars[current]) bars[current].style.transform = `scaleX(${Math.min(elapsed / duration, 1)})`;
+          if (elapsed >= duration) show(current + 1);
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function start() {
+        if (running || !autoplay) return;
+        running = true;
+        last = 0;
+        requestAnimationFrame(tick);
+      }
+
+      tabs.forEach((tab, i) => {
+        tab.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (i !== current) show(i);
+        });
+      });
+
+      // Pijltjestoetsen tussen de tabs (WAI-ARIA tabs)
+      root.addEventListener('keydown', (e) => {
+        if (!e.target.closest('[data-dg-tab]')) return;
+        const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+        let next = null;
+        if (e.key in keys) next = current + keys[e.key];
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        if (next === null) return;
+        e.preventDefault();
+        show(next);
+        tabs[current].focus();
+      });
+
+      root.addEventListener('mouseenter', () => { hovered = true; });
+      root.addEventListener('mouseleave', () => { hovered = false; });
+      root.addEventListener('focusin', () => { focused = true; });
+      root.addEventListener('focusout', (e) => {
+        if (!root.contains(e.relatedTarget)) focused = false;
+      });
+
+      new IntersectionObserver((entries) => {
+        inView = entries[0].isIntersecting;
+        if (inView) start();
+      }, { threshold: 0.25 }).observe(root);
+
+      root.setAttribute('data-dg-ready', '');
+      show(0);
+    });
+  }
+
   // Video-popup (doelgroeppagina's): een knop met [data-dg-video-play] en data-vimeo-id="123456"
   // opent die Vimeo-video in een <dialog>. Sluiten (Esc, kruisje of klik naast de video) haalt
   // de iframe weg, zodat het geluid direct stopt. Opmaak staat in Global CSS v2 (.dg-video-dialog).
@@ -2420,6 +2531,7 @@
       initBlobMorph,
       initNumberOdometer,
       initWavyMarquee,
+      initDgTabs,
       initVideoPopup,
       initLapostaForms,
     };
