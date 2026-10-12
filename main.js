@@ -1958,17 +1958,30 @@
         '</button><div class="dg-video-dialog_frame"></div>';
       frame = dialog.querySelector('.dg-video-dialog_frame');
 
-      dialog.querySelector('.dg-video-dialog_close').addEventListener('click', () => dialog.close());
+      dialog.querySelector('.dg-video-dialog_close').addEventListener('click', close);
       // Klik naast de video (op de achtergrond) sluit ook
       dialog.addEventListener('click', (e) => {
-        if (e.target === dialog) dialog.close();
+        if (e.target === dialog) close();
       });
-      dialog.addEventListener('close', () => {
-        frame.innerHTML = '';
-        if (window.lenis) window.lenis.start();
-        if (lastButton) lastButton.focus();
-      });
+      // Esc geeft eerst 'cancel'; 'close' als vangnet. Opruimen mag vaker gebeuren.
+      dialog.addEventListener('cancel', cleanup);
+      dialog.addEventListener('close', cleanup);
       document.body.appendChild(dialog);
+    }
+
+    // Direct (niet pas op het close-event) de iframe weghalen, zodat het geluid meteen stopt
+    function cleanup() {
+      frame.innerHTML = '';
+      if (window.lenis) window.lenis.start();
+      if (lastButton) {
+        lastButton.focus();
+        lastButton = null;
+      }
+    }
+
+    function close() {
+      cleanup();
+      if (dialog.open) dialog.close();
     }
 
     function open(button) {
@@ -1983,7 +1996,7 @@
       iframe.title = button.getAttribute('aria-label') || 'Video';
       iframe.allow = 'autoplay; fullscreen; picture-in-picture';
       iframe.setAttribute('allowfullscreen', '');
-      frame.appendChild(iframe);
+      frame.replaceChildren(iframe);
 
       if (window.lenis) window.lenis.stop();
       dialog.showModal();
