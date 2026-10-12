@@ -2178,7 +2178,9 @@
       const dotsWrap = root.querySelector('[data-dg-dots]');
       const dotTemplate = dotsWrap && dotsWrap.querySelector('[data-dg-dot]');
       const filters = [...section.querySelectorAll('[data-dg-filter]')];
+      const filterWrap = filters.length ? filters[0].parentElement : null;
       if (!track || !allSlides.length || !dotTemplate) return;
+      if (filterWrap) filterWrap.style.setProperty('--toggle-count', filters.length);
 
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const seconds = parseFloat(root.getAttribute('data-dg-autoplay'));
@@ -2260,7 +2262,13 @@
       }
 
       function setFilter(category) {
-        filters.forEach((f) => f.setAttribute('aria-selected', String(f.getAttribute('data-dg-filter') === category)));
+        // Schuivend blokje achter de actieve filter (naar Osmo "Toggle Switch")
+        const filterIndex = filters.findIndex((f) => f.getAttribute('data-dg-filter') === category);
+        if (filterWrap && filterIndex > -1) filterWrap.style.setProperty('--toggle-active', filterIndex);
+        filters.forEach((f, i) => {
+          f.setAttribute('aria-selected', String(i === filterIndex));
+          f.tabIndex = i === filterIndex ? 0 : -1;
+        });
         slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
         if (!slides.length) slides = allSlides;
         allSlides.forEach((s) => {
@@ -2323,10 +2331,19 @@
         if (Math.abs(dx) > 50) goTo(active + (dx < 0 ? 1 : -1));
       });
 
-      filters.forEach((f) => {
+      filters.forEach((f, i) => {
         f.addEventListener('click', (e) => {
           e.preventDefault();
           setFilter(f.getAttribute('data-dg-filter'));
+        });
+        // Pijltjes links/rechts tussen de filters
+        f.addEventListener('keydown', (e) => {
+          const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+          if (!dir) return;
+          e.preventDefault();
+          const next = filters[(i + dir + filters.length) % filters.length];
+          setFilter(next.getAttribute('data-dg-filter'));
+          next.focus();
         });
       });
 
