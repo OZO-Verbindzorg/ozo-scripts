@@ -2162,6 +2162,184 @@
     });
   }
 
+  // Ervaringen-slider (doelgroeppagina's), dots en tekst-animatie naar Osmo "Logo Card Testimonials".
+  // [data-dg-testimonials] bevat een rij kaarten ([data-dg-track] > [data-dg-slide] met
+  // data-dg-category) en een bolletjes-rij ([data-dg-dots] met één voorbeeld-[data-dg-dot]).
+  // De filterknoppen [data-dg-filter] in dezelfde sectie tonen alleen die doelgroep. De actieve
+  // kaart staat in het midden; het actieve bolletje loopt vol als timer (data-dg-autoplay in
+  // seconden, 0 = alleen klikken). Pauzeert bij hover, focus en buiten beeld. Tekst met
+  // [data-dg-split] komt regel voor regel in beeld (SplitText als Webflow die laadt).
+  function initDgTestimonials() {
+    document.querySelectorAll('[data-dg-testimonials]').forEach((root) => {
+      const section = root.closest('section') || document;
+      const track = root.querySelector('[data-dg-track]');
+      const allSlides = [...root.querySelectorAll('[data-dg-slide]')];
+      const dotsWrap = root.querySelector('[data-dg-dots]');
+      const dotTemplate = dotsWrap && dotsWrap.querySelector('[data-dg-dot]');
+      const filters = [...section.querySelectorAll('[data-dg-filter]')];
+      if (!track || !allSlides.length || !dotTemplate) return;
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const seconds = parseFloat(root.getAttribute('data-dg-autoplay'));
+      const duration = (isNaN(seconds) ? 6 : seconds) * 1000;
+      const autoplay = duration > 0 && !reduceMotion;
+      const splits = new Map();
+      dotTemplate.remove();
+      track.style.justifyContent = 'flex-start';
+
+      let slides = [];
+      let dots = [];
+      let active = -1;
+      let elapsed = 0;
+      let last = 0;
+      let running = false;
+      let inView = false;
+      let held = false;
+
+      function fill(i, value) {
+        const el = dots[i] && dots[i].querySelector('[data-dg-dot-fill]');
+        if (el) el.style.transform = `scaleX(${value})`;
+      }
+
+      function center(instant) {
+        const slide = slides[active];
+        if (!slide) return;
+        const offset = root.clientWidth / 2 - (slide.offsetLeft + slide.offsetWidth / 2);
+        track.style.transition = instant || reduceMotion ? 'none' : '';
+        track.style.transform = `translateX(${offset}px)`;
+      }
+
+      // Regels van de nieuwe kaart laten opkomen (zoals Osmo: per regel, licht verspringend)
+      function reveal(slide) {
+        if (reduceMotion) return;
+        slide.querySelectorAll('[data-dg-split]').forEach((el, n) => {
+          if (window.gsap && window.SplitText) {
+            if (!splits.has(el)) splits.set(el, SplitText.create(el, { type: 'lines', autoSplit: true }));
+            gsap.fromTo(splits.get(el).lines, { opacity: 0, yPercent: 40 }, {
+              opacity: 1,
+              yPercent: 0,
+              duration: 0.8,
+              ease: 'power3.out',
+              stagger: { amount: 0.3 },
+              delay: 0.35 + n * 0.1
+            });
+          } else {
+            el.animate([{ opacity: 0, transform: 'translateY(1rem)' }, { opacity: 1, transform: 'none' }], {
+              duration: 700,
+              delay: 350 + n * 100,
+              easing: 'cubic-bezier(.22, .61, .36, 1)',
+              fill: 'backwards'
+            });
+          }
+        });
+      }
+
+      function goTo(index, instant) {
+        index = (index + slides.length) % slides.length;
+        if (index === active) return;
+        active = index;
+        elapsed = 0;
+        slides.forEach((slide, i) => {
+          const on = i === active;
+          slide.setAttribute('data-dg-active', String(on));
+          slide.setAttribute('aria-hidden', String(!on));
+          slide.querySelectorAll('a, button').forEach((el) => { el.tabIndex = on ? 0 : -1; });
+        });
+        dots.forEach((dot, i) => {
+          dot.setAttribute('aria-current', String(i === active));
+          fill(i, i === active && !autoplay ? 1 : 0);
+        });
+        center(instant);
+        if (!instant) reveal(slides[active]);
+      }
+
+      function setFilter(category) {
+        filters.forEach((f) => f.setAttribute('aria-selected', String(f.getAttribute('data-dg-filter') === category)));
+        slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
+        if (!slides.length) slides = allSlides;
+        allSlides.forEach((s) => { s.hidden = !slides.includes(s); });
+        dotsWrap.replaceChildren();
+        dots = slides.map((slide, i) => {
+          const dot = dotTemplate.cloneNode(true);
+          dot.setAttribute('aria-label', `Ervaring ${i + 1} van ${slides.length}`);
+          dot.addEventListener('click', () => goTo(i));
+          dotsWrap.appendChild(dot);
+          return dot;
+        });
+        dotsWrap.hidden = slides.length < 2;
+        active = -1;
+        goTo(0, true);
+        reveal(slides[0]);
+      }
+
+      function tick(now) {
+        if (!inView) {
+          running = false;
+          return;
+        }
+        const dt = last ? Math.min(now - last, 100) : 0;
+        last = now;
+        if (!held && !document.hidden && slides.length > 1) {
+          elapsed += dt;
+          fill(active, Math.min(elapsed / duration, 1));
+          if (elapsed >= duration) goTo(active + 1);
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function start() {
+        if (running || !autoplay) return;
+        running = true;
+        last = 0;
+        requestAnimationFrame(tick);
+      }
+
+      // Klik op een kaart naast de actieve: eerst daarheen schuiven (niet meteen de video starten)
+      track.addEventListener('click', (e) => {
+        const slide = e.target.closest('[data-dg-slide]');
+        const i = slides.indexOf(slide);
+        if (i === -1 || i === active) return;
+        e.preventDefault();
+        e.stopPropagation();
+        goTo(i);
+      }, true);
+
+      // Vegen op touchscreens
+      let startX = null;
+      track.addEventListener('pointerdown', (e) => { startX = e.clientX; });
+      track.addEventListener('pointerup', (e) => {
+        if (startX === null) return;
+        const dx = e.clientX - startX;
+        startX = null;
+        if (Math.abs(dx) > 50) goTo(active + (dx < 0 ? 1 : -1));
+      });
+
+      filters.forEach((f) => {
+        f.addEventListener('click', (e) => {
+          e.preventDefault();
+          setFilter(f.getAttribute('data-dg-filter'));
+        });
+      });
+
+      root.addEventListener('pointerenter', () => { held = true; });
+      root.addEventListener('pointerleave', () => { held = false; });
+      root.addEventListener('focusin', () => { held = true; });
+      root.addEventListener('focusout', (e) => {
+        if (!root.contains(e.relatedTarget)) held = false;
+      });
+
+      new ResizeObserver(() => center(true)).observe(root);
+      new IntersectionObserver((entries) => {
+        inView = entries[0].isIntersecting;
+        if (inView) start();
+      }).observe(root);
+
+      root.setAttribute('data-dg-ready', '');
+      const first = filters.find((f) => f.getAttribute('aria-selected') === 'true') || filters[0];
+      setFilter(first ? first.getAttribute('data-dg-filter') : null);
+    });
+  }
+
   // Video-popup (doelgroeppagina's): een knop met [data-dg-video-play] en data-vimeo-id="123456"
   // opent die Vimeo-video in een <dialog>. Sluiten (Esc, kruisje of klik naast de video) haalt
   // de iframe weg, zodat het geluid direct stopt. Opmaak staat in Global CSS v2 (.dg-video-dialog).
@@ -2532,6 +2710,7 @@
       initNumberOdometer,
       initWavyMarquee,
       initDgTabs,
+      initDgTestimonials,
       initVideoPopup,
       initLapostaForms,
     };
