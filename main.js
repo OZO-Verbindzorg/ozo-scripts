@@ -13,7 +13,8 @@
     swiper: 'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js',
     fsAccordion: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-accordion@1/accordion.js',
     fsNumbercount: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-numbercount@1/numbercount.js',
-    fsFormsubmit: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-formsubmit@1/formsubmit.js'
+    fsFormsubmit: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-formsubmit@1/formsubmit.js',
+    splitText: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js'
   };
 
   // Laadt een extern script één keer; geeft een Promise terug
@@ -2187,6 +2188,11 @@
       dotTemplate.remove();
       track.style.justifyContent = 'flex-start';
 
+      // SplitText (regel-animatie) alleen hier laden; tot die er is, komt de tekst als geheel op
+      if (window.gsap && !window.SplitText && !reduceMotion) {
+        loadScript(LIBS.splitText).then(() => gsap.registerPlugin(SplitText)).catch(() => {});
+      }
+
       let slides = [];
       let dots = [];
       let active = -1;
@@ -2257,7 +2263,10 @@
         filters.forEach((f) => f.setAttribute('aria-selected', String(f.getAttribute('data-dg-filter') === category)));
         slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
         if (!slides.length) slides = allSlides;
-        allSlides.forEach((s) => { s.hidden = !slides.includes(s); });
+        allSlides.forEach((s) => {
+          s.hidden = !slides.includes(s);
+          s.removeAttribute('data-dg-active');
+        });
         dotsWrap.replaceChildren();
         dots = slides.map((slide, i) => {
           const dot = dotTemplate.cloneNode(true);
