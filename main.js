@@ -2263,7 +2263,10 @@
         if (!instant) reveal(slides[active]);
       }
 
-      function setFilter(category) {
+      let swapToken = 0;
+
+      // Wisselen van doelgroep: rij en bolletjes vervagen, kaarten wisselen onzichtbaar, dan weer in beeld
+      function setFilter(category, animate) {
         // Schuivend blokje achter de actieve filter (naar Osmo "Toggle Switch")
         const filterIndex = filters.findIndex((f) => f.getAttribute('data-dg-filter') === category);
         if (filterWrap && filterIndex > -1) filterWrap.style.setProperty('--toggle-active', filterIndex);
@@ -2271,9 +2274,31 @@
           f.setAttribute('aria-selected', String(i === filterIndex));
           f.tabIndex = i === filterIndex ? 0 : -1;
         });
+
+        const token = ++swapToken;
+        if (!animate || reduceMotion || !track.animate) {
+          showCategory(category);
+          return;
+        }
+        held = true;
+        const fadeOut = { duration: 250, easing: 'ease-in', fill: 'forwards' };
+        const outs = [track, dotsWrap].map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], fadeOut));
+        outs[0].finished.then(() => {
+          if (token !== swapToken) return; // alweer een andere filter gekozen
+          showCategory(category);
+          const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
+          [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
+          outs.forEach((anim) => anim.cancel());
+          held = root.matches(':hover') || root.contains(document.activeElement);
+        }).catch(() => {});
+      }
+
+      function showCategory(category) {
         slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
         if (!slides.length) slides = allSlides;
+        // Zonder overgang wisselen, anders knippert de opacity van de zijkaarten
         allSlides.forEach((s) => {
+          s.style.transition = 'none';
           s.hidden = !slides.includes(s);
           s.removeAttribute('data-dg-active');
         });
@@ -2288,6 +2313,8 @@
         dotsWrap.hidden = slides.length < 2;
         active = -1;
         goTo(0, true);
+        void track.offsetWidth;
+        allSlides.forEach((s) => { s.style.transition = ''; });
         reveal(slides[0]);
       }
 
@@ -2373,7 +2400,8 @@
       filters.forEach((f, i) => {
         f.addEventListener('click', (e) => {
           e.preventDefault();
-          setFilter(f.getAttribute('data-dg-filter'));
+          if (f.getAttribute('aria-selected') === 'true') return;
+          setFilter(f.getAttribute('data-dg-filter'), true);
         });
         // Pijltjes links/rechts tussen de filters
         f.addEventListener('keydown', (e) => {
@@ -2381,7 +2409,7 @@
           if (!dir) return;
           e.preventDefault();
           const next = filters[(i + dir + filters.length) % filters.length];
-          setFilter(next.getAttribute('data-dg-filter'));
+          setFilter(next.getAttribute('data-dg-filter'), true);
           next.focus();
         });
       });
