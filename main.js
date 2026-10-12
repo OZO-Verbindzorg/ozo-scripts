@@ -2209,10 +2209,12 @@
         if (el) el.style.transform = `scaleX(${value})`;
       }
 
+      let offset = 0;
+
       function center(instant) {
         const slide = slides[active];
         if (!slide) return;
-        const offset = root.clientWidth / 2 - (slide.offsetLeft + slide.offsetWidth / 2);
+        offset = root.clientWidth / 2 - (slide.offsetLeft + slide.offsetWidth / 2);
         track.style.transition = instant || reduceMotion ? 'none' : '';
         track.style.transform = `translateX(${offset}px)`;
       }
@@ -2311,25 +2313,62 @@
         requestAnimationFrame(tick);
       }
 
-      // Klik op een kaart naast de actieve: eerst daarheen schuiven (niet meteen de video starten)
+      // Slepen (muis en touch): de rij volgt de pointer, loslaten schuift naar de volgende/vorige kaart
+      let drag = null;
+      let dragged = false;
+
+      track.addEventListener('dragstart', (e) => e.preventDefault());
+      track.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || slides.length < 2) return;
+        drag = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, id: e.pointerId, on: false };
+        dragged = false;
+      });
+      track.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag.dx = e.clientX - drag.x;
+        if (!drag.on) {
+          // Pas slepen na een paar pixels horizontaal; verticaal = gewoon scrollen
+          if (Math.abs(drag.dx) < 6 || Math.abs(drag.dx) < Math.abs(e.clientY - drag.y)) return;
+          drag.on = true;
+          dragged = true;
+          held = true;
+          track.setPointerCapture(e.pointerId);
+          track.style.transition = 'none';
+          root.setAttribute('data-dg-dragging', '');
+        }
+        track.style.transform = `translateX(${offset + drag.dx}px)`;
+      });
+      function endDrag(e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        const { dx, on, t } = drag;
+        drag = null;
+        if (!on) return;
+        root.removeAttribute('data-dg-dragging');
+        held = root.matches(':hover');
+        const width = slides[active] ? slides[active].offsetWidth : root.clientWidth;
+        const fast = Math.abs(dx) / (performance.now() - t) > 0.5;
+        if (Math.abs(dx) > width * 0.15 || (fast && Math.abs(dx) > 30)) goTo(active + (dx < 0 ? 1 : -1));
+        else center();
+      }
+      track.addEventListener('pointerup', endDrag);
+      track.addEventListener('pointercancel', endDrag);
+
+      // Klik op een kaart naast de actieve: eerst daarheen schuiven (niet meteen de video starten).
+      // Na slepen telt de klik niet.
       track.addEventListener('click', (e) => {
         const slide = e.target.closest('[data-dg-slide]');
         const i = slides.indexOf(slide);
+        if (dragged) {
+          dragged = false;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         if (i === -1 || i === active) return;
         e.preventDefault();
         e.stopPropagation();
         goTo(i);
       }, true);
-
-      // Vegen op touchscreens
-      let startX = null;
-      track.addEventListener('pointerdown', (e) => { startX = e.clientX; });
-      track.addEventListener('pointerup', (e) => {
-        if (startX === null) return;
-        const dx = e.clientX - startX;
-        startX = null;
-        if (Math.abs(dx) > 50) goTo(active + (dx < 0 ? 1 : -1));
-      });
 
       filters.forEach((f, i) => {
         f.addEventListener('click', (e) => {
@@ -2363,6 +2402,35 @@
       root.setAttribute('data-dg-ready', '');
       const first = filters.find((f) => f.getAttribute('aria-selected') === 'true') || filters[0];
       setFilter(first ? first.getAttribute('data-dg-filter') : null);
+    });
+  }
+
+  // FAQ-accordeon (zoals op de Echo-site, naar Osmo "Accordion CSS"): [data-accordion-css-init]
+  // om de lijst, [data-accordion-status] per item, [data-accordion-toggle] op de knop.
+  // Openen/sluiten (hoogte-animatie) gebeurt in CSS; data-accordion-close-siblings="true" = één tegelijk open.
+  function initAccordionCSS() {
+    document.querySelectorAll('[data-accordion-css-init]').forEach((accordion) => {
+      const closeSiblings = accordion.getAttribute('data-accordion-close-siblings') === 'true';
+
+      function setStatus(item, open) {
+        item.setAttribute('data-accordion-status', open ? 'active' : 'not-active');
+        const toggle = item.querySelector('[data-accordion-toggle]');
+        if (toggle) toggle.setAttribute('aria-expanded', String(open));
+      }
+
+      accordion.addEventListener('click', (event) => {
+        const toggle = event.target.closest('[data-accordion-toggle]');
+        if (!toggle) return;
+        const item = toggle.closest('[data-accordion-status]');
+        if (!item) return;
+        const isActive = item.getAttribute('data-accordion-status') === 'active';
+        setStatus(item, !isActive);
+        if (closeSiblings && !isActive) {
+          accordion.querySelectorAll('[data-accordion-status="active"]').forEach((sibling) => {
+            if (sibling !== item) setStatus(sibling, false);
+          });
+        }
+      });
     });
   }
 
@@ -2737,6 +2805,7 @@
       initWavyMarquee,
       initDgTabs,
       initDgTestimonials,
+      initAccordionCSS,
       initVideoPopup,
       initLapostaForms,
     };
