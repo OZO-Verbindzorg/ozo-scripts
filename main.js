@@ -2291,7 +2291,7 @@
           swapped = true;
           // Ook vervaging van eerdere klikken opruimen (die blijven anders op 0 staan)
           [track, dotsWrap].forEach((el) => el.getAnimations().forEach((anim) => anim.cancel()));
-          showCategory(category);
+          showCategory(category, true);
           const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
           [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
           held = root.matches(':hover') || root.contains(document.activeElement);
@@ -2300,7 +2300,7 @@
         setTimeout(swap, 320); // vangnet als de animatie niet afrondt (bv. tab op de achtergrond)
       }
 
-      function showCategory(category) {
+      function showCategory(category, quiet) {
         slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
         if (!slides.length) slides = allSlides;
         // Zonder overgang wisselen, anders knippert de opacity van de zijkaarten
@@ -2322,7 +2322,8 @@
         goTo(0, true);
         void track.offsetWidth;
         allSlides.forEach((s) => { s.style.transition = ''; });
-        reveal(slides[0]);
+        // Bij wisselen via de filter alleen vervagen, geen regel-animatie van de quote
+        if (!quiet) reveal(slides[0]);
       }
 
       function tick(now) {
