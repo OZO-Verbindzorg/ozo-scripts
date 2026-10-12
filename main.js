@@ -2282,15 +2282,22 @@
         }
         held = true;
         const fadeOut = { duration: 250, easing: 'ease-in', fill: 'forwards' };
-        const outs = [track, dotsWrap].map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], fadeOut));
-        outs[0].finished.then(() => {
-          if (token !== swapToken) return; // alweer een andere filter gekozen
+        // Vanaf de huidige zichtbaarheid, zodat snel doorklikken niet verspringt
+        const outs = [track, dotsWrap].map((el) =>
+          el.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0 }], fadeOut));
+        let swapped = false;
+        const swap = () => {
+          if (swapped || token !== swapToken) return; // al gedaan, of alweer een andere filter gekozen
+          swapped = true;
+          // Ook vervaging van eerdere klikken opruimen (die blijven anders op 0 staan)
+          [track, dotsWrap].forEach((el) => el.getAnimations().forEach((anim) => anim.cancel()));
           showCategory(category);
           const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
           [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
-          outs.forEach((anim) => anim.cancel());
           held = root.matches(':hover') || root.contains(document.activeElement);
-        }).catch(() => {});
+        };
+        outs[0].finished.then(swap).catch(() => {});
+        setTimeout(swap, 320); // vangnet als de animatie niet afrondt (bv. tab op de achtergrond)
       }
 
       function showCategory(category) {
