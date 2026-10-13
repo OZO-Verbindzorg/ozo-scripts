@@ -289,24 +289,42 @@
       root.getAttribute('data-search-state') === 'open' ||
       !!navMenu.querySelector('[aria-expanded="true"]');
 
+    // Let op: een transform op #NAVMENU maakt het menu zelf het kader voor het (fixed) mobiele
+    // menu en de zoekbalk erin, waardoor die worden afgekapt. Daarom de transform helemaal
+    // weghalen zodra het menu terug is, en meteen als het menu, een dropdown of zoeken opengaat.
+    function clearShift() {
+      gsap.killTweensOf(navMenu);
+      gsap.set(navMenu, { clearProps: 'transform' });
+    }
+
     function setHidden(hide) {
       if (hide === hidden) return;
       hidden = hide;
+      if (!hide) {
+        gsap.to(navMenu, {
+          y: 0,
+          duration: 0.6,
+          ease: 'power3.out',
+          overwrite: true,
+          onComplete: clearShift
+        });
+        return;
+      }
       // Gemeten zonder de huidige verschuiving, ook als de vorige animatie nog loopt
-      const distance = hide ? navMenu.getBoundingClientRect().bottom - gsap.getProperty(navMenu, 'y') + 10 : 0;
-      gsap.to(navMenu, {
-        y: -distance,
-        duration: hide ? 0.45 : 0.6,
-        ease: hide ? 'power2.in' : 'power3.out',
-        overwrite: true
-      });
+      const distance = navMenu.getBoundingClientRect().bottom - gsap.getProperty(navMenu, 'y') + 10;
+      gsap.to(navMenu, { y: -distance, duration: 0.45, ease: 'power2.in', overwrite: true });
     }
 
     function onScroll() {
       const y = Math.max(window.scrollY, 0);
       const delta = y - lastY;
       lastY = y;
-      if (isBusy() || y < topZone) {
+      if (isBusy()) {
+        travel = 0;
+        showIfBusy();
+        return;
+      }
+      if (y < topZone) {
         travel = 0;
         setHidden(false);
         return;
@@ -321,7 +339,11 @@
 
     window.addEventListener('scroll', onScroll, { passive: true });
     // Gaat het menu, een dropdown of zoeken open terwijl de balk weg is: meteen terughalen
-    const showIfBusy = () => { if (isBusy()) setHidden(false); };
+    const showIfBusy = () => {
+      if (!isBusy()) return;
+      hidden = false;
+      clearShift(); // direct, zonder animatie: anders is het menu tijdens het terugschuiven afgekapt
+    };
     new MutationObserver(showIfBusy).observe(navMenu, {
       attributes: true,
       subtree: true,
