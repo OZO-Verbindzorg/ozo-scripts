@@ -2146,9 +2146,13 @@
         tabs[current].focus();
       });
 
-      root.addEventListener('mouseenter', () => { hovered = true; });
-      root.addEventListener('mouseleave', () => { hovered = false; });
-      root.addEventListener('focusin', () => { focused = true; });
+      // Alleen pauzeren als de muis op de tekst van een paneel staat (niet op tabs of afbeelding)
+      root.querySelectorAll('.dg-benefits_content').forEach((text) => {
+        text.addEventListener('mouseenter', () => { hovered = true; });
+        text.addEventListener('mouseleave', () => { hovered = false; });
+      });
+      // Toetsenbordfocus pauzeert ook (een muisklik op een tab niet)
+      root.addEventListener('focusin', (e) => { focused = e.target.matches(':focus-visible'); });
       root.addEventListener('focusout', (e) => {
         if (!root.contains(e.relatedTarget)) focused = false;
       });
