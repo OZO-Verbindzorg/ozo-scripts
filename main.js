@@ -271,30 +271,64 @@
 
   // ---------- Nieuwe site ----------
 
-  // Menu schuift weg bij naar beneden scrollen, komt terug bij omhoog scrollen (desktop)
+  // Menu verbergen bij naar beneden scrollen, terug bij omhoog scrollen (desktop én mobiel).
+  // De afstand wordt gemeten op het moment zelf (geen vaste -150px), en het menu verdwijnt nooit
+  // als het mobiele menu, een dropdown of de zoekbalk open is, of als je bovenaan de pagina staat.
   function initNavScroll() {
     const navMenu = document.querySelector('#NAVMENU');
     if (!navMenu || !window.gsap) return;
-    let lastScrollTop = 0; // Tracks the previous scroll position
-    const scrollThreshold = 28; // Minimum scroll difference to trigger the animation
-    window.addEventListener('scroll', function () {
-      if (window.innerWidth <= 991) return; // Disabled on mobile/tablet
-      const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
-      // Calculate the scroll difference
-      const scrollDelta = Math.abs(currentScroll - lastScrollTop);
-      // Only trigger animation if the scroll difference is greater than the threshold
-      if (scrollDelta > scrollThreshold) {
-        if (currentScroll > lastScrollTop) {
-          // Scroll Down: Move NAVMENU up
-          gsap.to(navMenu, { y: -150, duration: 0.7, ease: 'power2.out' });
-        } else {
-          // Scroll Up: Move NAVMENU back to its original position
-          gsap.to(navMenu, { y: 0, duration: 0.7, ease: 'power2.out' });
-        }
-        lastScrollTop = currentScroll <= 0 ? 0 : currentScroll; // Update lastScrollTop
+    const root = document.documentElement;
+    const threshold = 12; // zoveel px in één richting scrollen voordat het menu reageert
+    const topZone = 80; // bovenaan de pagina altijd zichtbaar
+    let lastY = window.scrollY;
+    let travel = 0;
+    let hidden = false;
+
+    const isBusy = () =>
+      navMenu.getAttribute('data-menu-open') === 'true' ||
+      root.getAttribute('data-search-state') === 'open' ||
+      !!navMenu.querySelector('[aria-expanded="true"]');
+
+    function setHidden(hide) {
+      if (hide === hidden) return;
+      hidden = hide;
+      const distance = hide ? navMenu.getBoundingClientRect().bottom + 10 : 0;
+      gsap.to(navMenu, {
+        y: -distance,
+        duration: hide ? 0.45 : 0.6,
+        ease: hide ? 'power2.in' : 'power3.out',
+        overwrite: true
+      });
+    }
+
+    function onScroll() {
+      const y = Math.max(window.scrollY, 0);
+      const delta = y - lastY;
+      lastY = y;
+      if (isBusy() || y < topZone) {
+        travel = 0;
+        setHidden(false);
+        return;
       }
+      if (!delta) return;
+      // Andere richting: opnieuw tellen
+      if (delta > 0 !== travel > 0) travel = 0;
+      travel += delta;
+      if (travel > threshold) setHidden(true);
+      else if (travel < -threshold) setHidden(false);
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    // Gaat het menu, een dropdown of zoeken open terwijl de balk weg is: meteen terughalen
+    const showIfBusy = () => { if (isBusy()) setHidden(false); };
+    new MutationObserver(showIfBusy).observe(navMenu, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['data-menu-open', 'aria-expanded']
     });
+    new MutationObserver(showIfBusy).observe(root, { attributes: true, attributeFilter: ['data-search-state'] });
   }
+
 
   function initMegaNavDirectionalHover() {
     const DUR = {
@@ -1423,15 +1457,28 @@
       return d + 'Z';
     }
 
+    const mobile = window.matchMedia('(max-width: 767px)');
+
     blobs.forEach((el) => {
-      const shape = BLOB_SHAPES[el.getAttribute('data-blob-morph')];
-      if (!shape) return;
+      // Optioneel een andere vorm op mobiel: data-blob-morph-mobile="hero-bg"
+      const pick = () => {
+        const mobileKey = el.getAttribute('data-blob-morph-mobile');
+        const key = mobileKey && mobile.matches && BLOB_SHAPES[mobileKey] ? mobileKey :
+          el.getAttribute('data-blob-morph');
+        return BLOB_SHAPES[key];
+      };
+      if (!pick()) return;
 
       const amp = parseFloat(el.getAttribute('data-blob-amp')) || 0.04;
       const speed = parseFloat(el.getAttribute('data-blob-speed')) || 0.5;
-      const [ax, bx, ay, by] = shape.aff;
-      const h = shape.h;
-      const harmonics = (h.length - 1) / 2;
+      let ax, bx, ay, by, h, harmonics;
+      const useShape = () => {
+        const shape = pick();
+        [ax, bx, ay, by] = shape.aff;
+        h = shape.h;
+        harmonics = (h.length - 1) / 2;
+      };
+      useShape();
       const seed = Math.random() * 100; // elke blob beweegt anders
       let width = el.offsetWidth;
       let height = el.offsetHeight;
@@ -1468,6 +1515,10 @@
         height = el.offsetHeight;
         render(lastTime);
       }).observe(el);
+      mobile.addEventListener('change', () => {
+        useShape();
+        render(lastTime);
+      });
 
       if (reduceMotion) return;
 
