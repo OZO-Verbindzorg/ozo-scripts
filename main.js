@@ -292,7 +292,8 @@
     function setHidden(hide) {
       if (hide === hidden) return;
       hidden = hide;
-      const distance = hide ? navMenu.getBoundingClientRect().bottom + 10 : 0;
+      // Gemeten zonder de huidige verschuiving, ook als de vorige animatie nog loopt
+      const distance = hide ? navMenu.getBoundingClientRect().bottom - gsap.getProperty(navMenu, 'y') + 10 : 0;
       gsap.to(navMenu, {
         y: -distance,
         duration: hide ? 0.45 : 0.6,
