@@ -2458,6 +2458,13 @@
         if (toggle) toggle.setAttribute('aria-expanded', String(open));
       }
 
+      // Pas nu dicht: zonder JS (en in de Designer) staan alle antwoorden open.
+      // Eerst zonder overgang dichtklappen, een frame later de animaties aanzetten.
+      accordion.setAttribute('data-accordion-ready', 'on');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        accordion.setAttribute('data-accordion-ready', 'live');
+      }));
+
       accordion.addEventListener('click', (event) => {
         const toggle = event.target.closest('[data-accordion-toggle]');
         if (!toggle) return;
