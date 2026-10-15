@@ -14,7 +14,9 @@
     fsAccordion: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-accordion@1/accordion.js',
     fsNumbercount: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-numbercount@1/numbercount.js',
     fsFormsubmit: 'https://cdn.jsdelivr.net/npm/@finsweet/attributes-formsubmit@1/formsubmit.js',
-    splitText: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js'
+    splitText: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js',
+    draggable: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/Draggable.min.js',
+    inertia: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/InertiaPlugin.min.js'
   };
 
   // Laadt een extern script één keer; geeft een Promise terug
@@ -2241,367 +2243,403 @@
     });
   }
 
+  // Naadloze rij (Osmo "Draggable Infinite Slider", de bekende GSAP horizontalLoop-helper).
+  // Elke kaart schuift los via xPercent op één tijdlijn; wat links uit beeld gaat, komt achteraan
+  // terug, dus geen klonen nodig. Twee aanvullingen op Osmo: dragClickables (slepen mag ook op de
+  // video-knop) en timeline.destroy() (alles terugzetten bij een filterwissel).
+  function horizontalLoop(items, config) {
+    let timeline;
+    items = gsap.utils.toArray(items);
+    config = config || {};
+    const ctx = gsap.context(() => {
+      let onChange = config.onChange, lastIndex = 0,
+        tl = gsap.timeline({repeat: config.repeat, onUpdate: onChange && function() { let i = tl.closestIndex(); if (lastIndex !== i) { lastIndex = i; onChange(items[i], i); } }, paused: config.paused, defaults: {ease: "none"}, onReverseComplete: () => tl.totalTime(tl.rawTime() + tl.duration() * 100)}),
+        length = items.length, startX = items[0].offsetLeft, times = [], widths = [], spaceBefore = [], xPercents = [], curIndex = 0, indexIsDirty = false, center = config.center, pixelsPerSecond = (config.speed || 1) * 100,
+        snap = config.snap === false ? v => v : gsap.utils.snap(config.snap || 1), timeOffset = 0,
+        container = center === true ? items[0].parentNode : gsap.utils.toArray(center)[0] || items[0].parentNode, totalWidth,
+        getTotalWidth = () => items[length-1].offsetLeft + xPercents[length-1] / 100 * widths[length-1] - startX + spaceBefore[0] + items[length-1].offsetWidth * gsap.getProperty(items[length-1], "scaleX") + (parseFloat(config.paddingRight) || 0),
+        populateWidths = () => { let b1 = container.getBoundingClientRect(), b2; items.forEach((el, i) => { widths[i] = parseFloat(gsap.getProperty(el, "width", "px")); xPercents[i] = snap(parseFloat(gsap.getProperty(el, "x", "px")) / widths[i] * 100 + gsap.getProperty(el, "xPercent")); b2 = el.getBoundingClientRect(); spaceBefore[i] = b2.left - (i ? b1.right : b1.left); b1 = b2; }); gsap.set(items, { xPercent: i => xPercents[i] }); totalWidth = getTotalWidth(); },
+        timeWrap,
+        populateOffsets = () => { timeOffset = center ? tl.duration() * (container.offsetWidth / 2) / totalWidth : 0; center && times.forEach((t, i) => { times[i] = timeWrap(tl.labels["label" + i] + tl.duration() * widths[i] / 2 / totalWidth - timeOffset); }); },
+        getClosest = (values, value, wrap) => { let i = values.length, closest = 1e10, index = 0, d; while (i--) { d = Math.abs(values[i] - value); if (d > wrap / 2) { d = wrap - d; } if (d < closest) { closest = d; index = i; } } return index; },
+        populateTimeline = () => { let i, item, curX, distanceToStart, distanceToLoop; tl.clear(); for (i = 0; i < length; i++) { item = items[i]; curX = xPercents[i] / 100 * widths[i]; distanceToStart = item.offsetLeft + curX - startX + spaceBefore[0]; distanceToLoop = distanceToStart + widths[i] * gsap.getProperty(item, "scaleX"); tl.to(item, {xPercent: snap((curX - distanceToLoop) / widths[i] * 100), duration: distanceToLoop / pixelsPerSecond}, 0).fromTo(item, {xPercent: snap((curX - distanceToLoop + totalWidth) / widths[i] * 100)}, {xPercent: xPercents[i], duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond, immediateRender: false}, distanceToLoop / pixelsPerSecond).add("label" + i, distanceToStart / pixelsPerSecond); times[i] = distanceToStart / pixelsPerSecond; } timeWrap = gsap.utils.wrap(0, tl.duration()); },
+        refresh = (deep) => { let progress = tl.progress(); tl.progress(0, true); populateWidths(); deep && populateTimeline(); populateOffsets(); deep && tl.draggable ? tl.time(times[curIndex], true) : tl.progress(progress, true); },
+        onResize = () => refresh(true), proxy;
+      gsap.set(items, {x: 0}); populateWidths(); populateTimeline(); populateOffsets(); window.addEventListener("resize", onResize);
+      function toIndex(index, vars) { vars = vars || {}; (Math.abs(index - curIndex) > length / 2) && (index += index > curIndex ? -length : length); let newIndex = gsap.utils.wrap(0, length, index), time = times[newIndex]; if (time > tl.time() !== index > curIndex && index !== curIndex) { time += tl.duration() * (index > curIndex ? 1 : -1); } if (time < 0 || time > tl.duration()) { vars.modifiers = {time: timeWrap}; } curIndex = newIndex; vars.overwrite = true; gsap.killTweensOf(proxy); return vars.duration === 0 ? tl.time(timeWrap(time)) : tl.tweenTo(time, vars); }
+      tl.toIndex = (index, vars) => toIndex(index, vars);
+      tl.closestIndex = setCurrent => { let index = getClosest(times, tl.time(), tl.duration()); if (setCurrent) { curIndex = index; indexIsDirty = false; } return index; };
+      tl.current = () => indexIsDirty ? tl.closestIndex(true) : curIndex;
+      tl.next = vars => toIndex(tl.current()+1, vars);
+      tl.previous = vars => toIndex(tl.current()-1, vars);
+      tl.times = times;
+      tl.progress(1, true).progress(0, true);
+      if (config.reversed) { tl.vars.onReverseComplete(); tl.reverse(); }
+      if (config.draggable && typeof(Draggable) === "function") {
+        proxy = document.createElement("div");
+        let wrap = gsap.utils.wrap(0, 1), ratio, startProgress, draggable, dragSnap, lastSnap, initChangeX, wasPlaying,
+          align = () => tl.progress(wrap(startProgress + (draggable.startX - draggable.x) * ratio)),
+          syncIndex = () => tl.closestIndex(true);
+        draggable = Draggable.create(proxy, {
+          trigger: items[0].parentNode, type: "x", dragClickables: true,
+          onPressInit() { let x = this.x; gsap.killTweensOf(tl); wasPlaying = !tl.paused(); tl.pause(); startProgress = tl.progress(); refresh(); ratio = 1 / totalWidth; initChangeX = (startProgress / -ratio) - x; gsap.set(proxy, {x: startProgress / -ratio}); },
+          onDrag: align, onThrowUpdate: align, overshootTolerance: 0, inertia: true,
+          snap(value) { if (Math.abs(startProgress / -ratio - this.x) < 10) { return lastSnap + initChangeX } let time = -(value * ratio) * tl.duration(), wrappedTime = timeWrap(time), snapTime = times[getClosest(times, wrappedTime, tl.duration())], dif = snapTime - wrappedTime; Math.abs(dif) > tl.duration() / 2 && (dif += dif < 0 ? tl.duration() : -tl.duration()); lastSnap = (time + dif) / tl.duration() / -ratio; return lastSnap; },
+          onRelease() { syncIndex(); draggable.isThrowing && (indexIsDirty = true); },
+          onThrowComplete: () => { syncIndex(); wasPlaying && tl.play(); }
+        })[0];
+        tl.draggable = draggable;
+      }
+      tl.closestIndex(true); lastIndex = curIndex; onChange && onChange(items[curIndex], curIndex); timeline = tl;
+      return () => window.removeEventListener("resize", onResize);
+    });
+    timeline.destroy = () => {
+      if (timeline.draggable) timeline.draggable.kill();
+      ctx.revert();
+    };
+    return timeline;
+  }
+
   // Ervaringen-slider (doelgroeppagina's), dots en tekst-animatie naar Osmo "Logo Card Testimonials".
   // [data-dg-testimonials] bevat een rij kaarten ([data-dg-track] > [data-dg-slide] met
   // data-dg-category) en een bolletjes-rij ([data-dg-dots] met één voorbeeld-[data-dg-dot]).
-  // De filterknoppen [data-dg-filter] in dezelfde sectie tonen alleen die doelgroep. De actieve
-  // kaart staat altijd in het midden; het actieve bolletje loopt vol als timer (data-dg-autoplay in
-  // seconden, 0 = alleen klikken). Pauzeert bij hover, focus en buiten beeld. Tekst met
-  // [data-dg-split] komt regel voor regel in beeld (SplitText als Webflow die laadt).
-  // Oneindige rij: links en rechts staan klonen van de kaarten van de gekozen doelgroep
-  // ([data-dg-clone], niet bedienbaar), zodat er nooit een lege kant is. Voorbij de laatste kaart
-  // springt de rij eerst ongemerkt naar de gelijke kloon en schuift dan naar de echte kaart.
+  // De filterknoppen [data-dg-filter] in dezelfde sectie tonen alleen die doelgroep; de rij wordt
+  // dan opnieuw opgebouwd met horizontalLoop (hierboven): oneindig, sleepbaar met inertie, de
+  // actieve kaart in het midden van de sectie. Het actieve bolletje loopt vol als timer
+  // (data-dg-autoplay in seconden, 0 = alleen klikken). Pauzeert bij hover, focus en buiten beeld.
+  // Tekst met [data-dg-split] komt regel voor regel in beeld (SplitText).
   function initDgTestimonials() {
-    document.querySelectorAll('[data-dg-testimonials]').forEach((root) => {
-      const section = root.closest('section') || document;
-      const track = root.querySelector('[data-dg-track]');
-      const allSlides = [...root.querySelectorAll('[data-dg-slide]')];
-      const dotsWrap = root.querySelector('[data-dg-dots]');
-      const dotTemplate = dotsWrap && dotsWrap.querySelector('[data-dg-dot]');
-      const filters = [...section.querySelectorAll('[data-dg-filter]')];
-      const filterWrap = filters.length ? filters[0].parentElement : null;
-      if (!track || !allSlides.length || !dotTemplate) return;
-      if (filterWrap) filterWrap.style.setProperty('--toggle-count', filters.length);
+    const roots = document.querySelectorAll('[data-dg-testimonials]');
+    if (!roots.length || !window.gsap) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const seconds = parseFloat(root.getAttribute('data-dg-autoplay'));
-      const duration = (isNaN(seconds) ? 6 : seconds) * 1000;
-      const autoplay = duration > 0 && !reduceMotion;
-      const splits = new Map();
-      dotTemplate.remove();
-      track.style.justifyContent = 'flex-start';
+    // Draggable + InertiaPlugin (en SplitText) komen niet met Webflow mee; zonder slepen werkt de rij ook
+    const plugins = [
+      window.Draggable ? null : loadScript(LIBS.draggable),
+      window.InertiaPlugin ? null : loadScript(LIBS.inertia),
+      window.SplitText || reduceMotion ? null : loadScript(LIBS.splitText)
+    ];
+    Promise.allSettled(plugins).then(() => {
+      ['Draggable', 'InertiaPlugin', 'SplitText'].forEach((name) => {
+        if (window[name]) gsap.registerPlugin(window[name]);
+      });
+      roots.forEach((root) => setupDgTestimonials(root, reduceMotion));
+    });
+  }
 
-      // SplitText (regel-animatie) alleen hier laden; tot die er is, komt de tekst als geheel op
-      if (window.gsap && !window.SplitText && !reduceMotion) {
-        loadScript(LIBS.splitText).then(() => gsap.registerPlugin(SplitText)).catch(() => {});
+  function setupDgTestimonials(root, reduceMotion) {
+    const section = root.closest('section') || document.body;
+    const track = root.querySelector('[data-dg-track]');
+    const allSlides = [...root.querySelectorAll('[data-dg-slide]')];
+    const dotsWrap = root.querySelector('[data-dg-dots]');
+    const dotTemplate = dotsWrap && dotsWrap.querySelector('[data-dg-dot]');
+    const filters = [...section.querySelectorAll('[data-dg-filter]')];
+    const filterWrap = filters.length ? filters[0].parentElement : null;
+    if (!track || !allSlides.length || !dotTemplate) return;
+    if (filterWrap) filterWrap.style.setProperty('--toggle-count', filters.length);
+
+    const seconds = parseFloat(root.getAttribute('data-dg-autoplay'));
+    const duration = (isNaN(seconds) ? 6 : seconds) * 1000;
+    const autoplay = duration > 0 && !reduceMotion;
+    const move = { ease: 'power3', duration: reduceMotion ? 0 : 0.725 };
+    const splits = new Map();
+    dotTemplate.remove();
+    track.style.justifyContent = 'flex-start';
+
+    let slides = []; // echte kaarten van de gekozen doelgroep
+    let items = []; // wat in de loop zit: de kaarten, op brede schermen plus klonen
+    let category = null;
+    let dots = [];
+    let loop = null;
+    let active = -1; // index in slides (voor bolletjes en timer)
+    let current = -1; // index in items (de kaart in het midden)
+    let elapsed = 0;
+    let last = 0;
+    let running = false;
+    let inView = false;
+    let held = false;
+    let dragged = false;
+    let building = false;
+
+    // De rij loopt tot de randen van de sectie, zodat kaarten pas buiten beeld achteraan terugkomen
+    function bleed() {
+      track.style.marginLeft = '';
+      track.style.marginRight = '';
+      const s = section.getBoundingClientRect();
+      const t = track.getBoundingClientRect();
+      track.style.marginLeft = `${s.left - t.left}px`;
+      track.style.marginRight = `${t.right - s.right}px`;
+    }
+
+    function fill(i, value) {
+      const el = dots[i] && dots[i].querySelector('[data-dg-dot-fill]');
+      if (el) el.style.transform = `scaleX(${value})`;
+    }
+
+    // Regels van de nieuwe kaart laten opkomen (zoals Osmo: per regel, licht verspringend)
+    function reveal(slide) {
+      if (reduceMotion || !slide) return;
+      slide.querySelectorAll('[data-dg-split]').forEach((el, n) => {
+        if (window.SplitText) {
+          if (!splits.has(el)) splits.set(el, SplitText.create(el, { type: 'lines', autoSplit: true }));
+          gsap.fromTo(splits.get(el).lines, { opacity: 0, yPercent: 40 }, {
+            opacity: 1,
+            yPercent: 0,
+            duration: 0.8,
+            ease: 'power3.out',
+            stagger: { amount: 0.3 },
+            delay: 0.35 + n * 0.1
+          });
+        } else {
+          el.animate([{ opacity: 0, transform: 'translateY(1rem)' }, { opacity: 1, transform: 'none' }], {
+            duration: 700,
+            delay: 350 + n * 100,
+            easing: 'cubic-bezier(.22, .61, .36, 1)',
+            fill: 'backwards'
+          });
+        }
+      });
+    }
+
+    // Vanuit de loop (ook tijdens slepen): actieve kaart, bolletjes en timer bijwerken
+    function setActive(itemIndex, quiet) {
+      if (itemIndex === current) return;
+      current = itemIndex;
+      active = itemIndex % slides.length;
+      elapsed = 0;
+      items.forEach((el, i) => el.setAttribute('data-dg-active', String(i === current)));
+      slides.forEach((slide, i) => {
+        const on = i === active;
+        slide.setAttribute('aria-hidden', String(!on));
+        slide.querySelectorAll('a, button').forEach((el) => { el.tabIndex = on ? 0 : -1; });
+      });
+      dots.forEach((dot, i) => {
+        dot.setAttribute('aria-current', String(i === active));
+        fill(i, i === active && !autoplay ? 1 : 0);
+      });
+      if (!quiet) reveal(items[current]);
+    }
+
+    // Naar kaart i van de doelgroep: met klonen de dichtstbijzijnde kopie daarvan
+    function goTo(i) {
+      if (!loop) return;
+      let best = i;
+      const len = items.length;
+      for (let j = i; j < len; j += slides.length) {
+        const d = Math.min(Math.abs(j - current), len - Math.abs(j - current));
+        const bd = Math.min(Math.abs(best - current), len - Math.abs(best - current));
+        if (d < bd) best = j;
       }
+      loop.toIndex(best, { ...move });
+    }
 
-      let slides = []; // echte kaarten van de gekozen doelgroep
-      let seq = []; // klonen + echte kaarten + klonen, zoals ze in de rij staan
-      let clones = [];
-      let sets = 0; // aantal kloon-rondes aan elke kant
-      let base = 0; // plek van de eerste echte kaart in seq
-      let pos = -1; // plek van de actieve kaart in seq
-      let active = -1; // index van de actieve kaart in slides
-      let dots = [];
-      let elapsed = 0;
-      let last = 0;
-      let running = false;
-      let inView = false;
-      let held = false;
+    // Eén ronde kaarten moet breder zijn dan de sectie plus één kaart, anders komt er zichtbaar
+    // een kaart terug. Op heel brede schermen daarom extra rondes klonen (aria-hidden, niet bedienbaar).
+    function roundsNeeded() {
+      const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+      const round = slides.reduce((sum, s) => sum + s.offsetWidth + gap, 0) || 1;
+      const widest = Math.max(...slides.map((s) => s.offsetWidth));
+      return Math.max(1, Math.ceil((section.clientWidth + widest) / round));
+    }
 
-      function fill(i, value) {
-        const el = dots[i] && dots[i].querySelector('[data-dg-dot-fill]');
-        if (el) el.style.transform = `scaleX(${value})`;
+    function removeClones() {
+      track.querySelectorAll('[data-dg-clone]').forEach((c) => {
+        c.querySelectorAll('[data-dg-split]').forEach((el) => splits.delete(el));
+        c.remove();
+      });
+    }
+
+    let rounds = 1;
+
+    let swapToken = 0;
+
+    // Wisselen van doelgroep: rij en bolletjes vervagen, kaarten wisselen onzichtbaar, dan weer in beeld
+    function setFilter(category, animate) {
+      // Schuivend blokje achter de actieve filter (naar Osmo "Toggle Switch")
+      const filterIndex = filters.findIndex((f) => f.getAttribute('data-dg-filter') === category);
+      if (filterWrap && filterIndex > -1) filterWrap.style.setProperty('--toggle-active', filterIndex);
+      filters.forEach((f, i) => {
+        f.setAttribute('aria-selected', String(i === filterIndex));
+        f.tabIndex = i === filterIndex ? 0 : -1;
+      });
+
+      const token = ++swapToken;
+      if (!animate || reduceMotion || !track.animate) {
+        showCategory(category);
+        return;
       }
+      held = true;
+      const fadeOut = { duration: 250, easing: 'ease-in', fill: 'forwards' };
+      // Vanaf de huidige zichtbaarheid, zodat snel doorklikken niet verspringt
+      const outs = [track, dotsWrap].map((el) =>
+        el.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0 }], fadeOut));
+      let swapped = false;
+      const swap = () => {
+        if (swapped || token !== swapToken) return; // al gedaan, of alweer een andere filter gekozen
+        swapped = true;
+        // Ook vervaging van eerdere klikken opruimen (die blijven anders op 0 staan)
+        [track, dotsWrap].forEach((el) => el.getAnimations().forEach((anim) => anim.cancel()));
+        showCategory(category, true);
+        const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
+        [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
+        held = root.matches(':hover') || root.contains(document.activeElement);
+      };
+      outs[0].finished.then(swap).catch(() => {});
+      setTimeout(swap, 320); // vangnet als de animatie niet afrondt (bv. tab op de achtergrond)
+    }
 
-      let offset = 0;
-
-      function center(instant, extra) {
-        const slide = seq[pos];
-        if (!slide) return;
-        offset = root.clientWidth / 2 - (slide.offsetLeft + slide.offsetWidth / 2);
-        track.style.transition = instant || reduceMotion ? 'none' : '';
-        track.style.transform = `translateX(${offset + (extra || 0)}px)`;
-      }
-
-      // Zet de actieve kaart; quiet = zonder overgang (opacity/blur), voor de onzichtbare sprong
-      function markActive(quiet) {
-        if (quiet) seq.forEach((el) => { el.style.transition = 'none'; });
-        seq.forEach((el, i) => el.setAttribute('data-dg-active', String(i === pos)));
-        slides.forEach((slide, i) => {
-          const on = i === active;
-          slide.setAttribute('aria-hidden', String(!on));
-          slide.querySelectorAll('a, button').forEach((el) => { el.tabIndex = on ? 0 : -1; });
+    function showCategory(cat, quiet, startAt) {
+      if (loop) loop.destroy();
+      loop = null;
+      removeClones();
+      category = cat;
+      slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === cat);
+      if (!slides.length) slides = allSlides;
+      // Zonder overgang wisselen, anders knippert de opacity/blur van de zijkaarten
+      allSlides.forEach((s) => {
+        s.style.transition = 'none';
+        s.hidden = !slides.includes(s);
+        s.removeAttribute('data-dg-active');
+      });
+      dotsWrap.replaceChildren();
+      dots = slides.map((slide, i) => {
+        const dot = dotTemplate.cloneNode(true);
+        dot.setAttribute('aria-label', `Ervaring ${i + 1} van ${slides.length}`);
+        dot.addEventListener('click', () => goTo(i));
+        dotsWrap.appendChild(dot);
+        return dot;
+      });
+      dotsWrap.hidden = slides.length < 2;
+      active = -1;
+      current = -1;
+      items = slides;
+      track.style.marginLeft = '';
+      track.style.marginRight = '';
+      track.style.justifyContent = slides.length > 1 ? 'flex-start' : 'center';
+      if (slides.length > 1) {
+        rounds = roundsNeeded();
+        for (let r = 1; r < rounds; r++) {
+          const copies = slides.map((s) => {
+            const c = s.cloneNode(true);
+            c.setAttribute('data-dg-clone', '');
+            c.setAttribute('aria-hidden', 'true');
+            c.querySelectorAll('a, button').forEach((el) => { el.tabIndex = -1; });
+            return c;
+          });
+          track.append(...copies);
+          items = items.concat(copies);
+        }
+        bleed();
+        building = true;
+        loop = horizontalLoop(items, {
+          paused: true,
+          draggable: true,
+          center: section,
+          paddingRight: parseFloat(getComputedStyle(track).columnGap) || 0,
+          onChange: (el, i) => setActive(i, building)
         });
-        if (quiet) {
-          void track.offsetWidth;
-          seq.forEach((el) => { el.style.transition = ''; });
+        loop.toIndex(startAt || 0, { duration: 0 });
+        building = false;
+        if (loop.draggable) {
+          loop.draggable.addEventListener('dragstart', () => {
+            dragged = true;
+            held = true;
+            root.setAttribute('data-dg-dragging', '');
+          });
+          loop.draggable.addEventListener('release', () => {
+            root.removeAttribute('data-dg-dragging');
+            held = root.matches(':hover');
+          });
         }
       }
+      setActive(startAt || 0, true);
+      void track.offsetWidth;
+      allSlides.forEach((s) => { s.style.transition = ''; });
+      // Bij wisselen via de filter alleen vervagen, geen regel-animatie van de quote
+      if (!quiet) reveal(items[current]);
+    }
 
-      // Regels van de nieuwe kaart laten opkomen (zoals Osmo: per regel, licht verspringend)
-      function reveal(slide) {
-        if (reduceMotion) return;
-        slide.querySelectorAll('[data-dg-split]').forEach((el, n) => {
-          if (window.gsap && window.SplitText) {
-            if (!splits.has(el)) splits.set(el, SplitText.create(el, { type: 'lines', autoSplit: true }));
-            gsap.fromTo(splits.get(el).lines, { opacity: 0, yPercent: 40 }, {
-              opacity: 1,
-              yPercent: 0,
-              duration: 0.8,
-              ease: 'power3.out',
-              stagger: { amount: 0.3 },
-              delay: 0.35 + n * 0.1
-            });
-          } else {
-            el.animate([{ opacity: 0, transform: 'translateY(1rem)' }, { opacity: 1, transform: 'none' }], {
-              duration: 700,
-              delay: 350 + n * 100,
-              easing: 'cubic-bezier(.22, .61, .36, 1)',
-              fill: 'backwards'
-            });
-          }
-        });
+    function tick(now) {
+      if (!inView) {
+        running = false;
+        return;
       }
-
-      // index mag buiten 0..n-1 vallen (active + 1 na de laatste); dx = hoe ver de rij nog versleept staat
-      function goTo(index, instant, dx) {
-        const n = slides.length;
-        if (!n) return;
-        const target = ((index % n) + n) % n;
-        if (pos > -1 && target === active) {
-          center();
-          return;
+      const dt = last ? Math.min(now - last, 100) : 0;
+      last = now;
+      if (!held && !document.hidden && slides.length > 1) {
+        elapsed += dt;
+        fill(active, Math.min(elapsed / duration, 1));
+        if (elapsed >= duration) {
+          elapsed = 0;
+          loop.next({ ...move });
         }
-        let next = pos === -1 ? base + target : pos + (index - active);
-        // Zou de rij op een kloon eindigen: eerst onzichtbaar een ronde terug (of vooruit) springen
-        const shift = next >= base + n ? -n : next < base ? n : 0;
-        if (shift && pos > -1) {
-          pos += shift;
-          next += shift;
-          markActive(true);
-          center(true, dx);
-          void track.offsetWidth;
-        }
-        pos = next;
-        active = target;
-        elapsed = 0;
-        markActive(instant);
-        dots.forEach((dot, i) => {
-          dot.setAttribute('aria-current', String(i === active));
-          fill(i, i === active && !autoplay ? 1 : 0);
-        });
-        center(instant);
-        if (!instant) reveal(slides[active]);
       }
+      requestAnimationFrame(tick);
+    }
 
-      // Breedte van één ronde kaarten (incl. tussenruimte)
-      function setWidth() {
-        const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
-        return slides.reduce((sum, s) => sum + s.offsetWidth + gap, 0);
-      }
+    function start() {
+      if (running || !autoplay) return;
+      running = true;
+      last = 0;
+      requestAnimationFrame(tick);
+    }
 
-      // Genoeg rondes klonen dat ook tijdens een sprong beide kanten vol staan
-      function setsNeeded() {
-        if (slides.length < 2) return 0;
-        const widest = Math.max(...slides.map((s) => s.offsetWidth));
-        return Math.max(1, Math.ceil((root.clientWidth / 2 + widest * 2) / (setWidth() || 1)));
-      }
-
-      function buildClones() {
-        clones.forEach((c) => {
-          c.querySelectorAll('[data-dg-split]').forEach((el) => splits.delete(el));
-          c.remove();
-        });
-        sets = setsNeeded();
-        const make = () => slides.map((s) => {
-          const c = s.cloneNode(true);
-          c.setAttribute('data-dg-clone', '');
-          c.setAttribute('aria-hidden', 'true');
-          c.querySelectorAll('a, button').forEach((el) => { el.tabIndex = -1; });
-          c.style.transition = '';
-          return c;
-        });
-        const before = [];
-        const after = [];
-        for (let r = 0; r < sets; r++) {
-          before.push(...make());
-          after.push(...make());
-        }
-        track.prepend(...before);
-        track.append(...after);
-        clones = [...before, ...after];
-        seq = [...before, ...slides, ...after];
-        base = before.length;
-        if (active > -1) pos = base + active;
-      }
-
-      let swapToken = 0;
-
-      // Wisselen van doelgroep: rij en bolletjes vervagen, kaarten wisselen onzichtbaar, dan weer in beeld
-      function setFilter(category, animate) {
-        // Schuivend blokje achter de actieve filter (naar Osmo "Toggle Switch")
-        const filterIndex = filters.findIndex((f) => f.getAttribute('data-dg-filter') === category);
-        if (filterWrap && filterIndex > -1) filterWrap.style.setProperty('--toggle-active', filterIndex);
-        filters.forEach((f, i) => {
-          f.setAttribute('aria-selected', String(i === filterIndex));
-          f.tabIndex = i === filterIndex ? 0 : -1;
-        });
-
-        const token = ++swapToken;
-        if (!animate || reduceMotion || !track.animate) {
-          showCategory(category);
-          return;
-        }
-        held = true;
-        const fadeOut = { duration: 250, easing: 'ease-in', fill: 'forwards' };
-        // Vanaf de huidige zichtbaarheid, zodat snel doorklikken niet verspringt
-        const outs = [track, dotsWrap].map((el) =>
-          el.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0 }], fadeOut));
-        let swapped = false;
-        const swap = () => {
-          if (swapped || token !== swapToken) return; // al gedaan, of alweer een andere filter gekozen
-          swapped = true;
-          // Ook vervaging van eerdere klikken opruimen (die blijven anders op 0 staan)
-          [track, dotsWrap].forEach((el) => el.getAnimations().forEach((anim) => anim.cancel()));
-          showCategory(category, true);
-          const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
-          [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
-          held = root.matches(':hover') || root.contains(document.activeElement);
-        };
-        outs[0].finished.then(swap).catch(() => {});
-        setTimeout(swap, 320); // vangnet als de animatie niet afrondt (bv. tab op de achtergrond)
-      }
-
-      function showCategory(category, quiet) {
-        slides = allSlides.filter((s) => s.getAttribute('data-dg-category') === category);
-        if (!slides.length) slides = allSlides;
-        // Zonder overgang wisselen, anders knippert de opacity van de zijkaarten
-        allSlides.forEach((s) => {
-          s.style.transition = 'none';
-          s.hidden = !slides.includes(s);
-          s.removeAttribute('data-dg-active');
-        });
-        active = -1;
-        pos = -1;
-        buildClones();
-        dotsWrap.replaceChildren();
-        dots = slides.map((slide, i) => {
-          const dot = dotTemplate.cloneNode(true);
-          dot.setAttribute('aria-label', `Ervaring ${i + 1} van ${slides.length}`);
-          dot.addEventListener('click', () => goTo(i));
-          dotsWrap.appendChild(dot);
-          return dot;
-        });
-        dotsWrap.hidden = slides.length < 2;
-        goTo(0, true);
-        void track.offsetWidth;
-        allSlides.forEach((s) => { s.style.transition = ''; });
-        // Bij wisselen via de filter alleen vervagen, geen regel-animatie van de quote
-        if (!quiet) reveal(slides[0]);
-      }
-
-      function tick(now) {
-        if (!inView) {
-          running = false;
-          return;
-        }
-        const dt = last ? Math.min(now - last, 100) : 0;
-        last = now;
-        if (!held && !document.hidden && slides.length > 1) {
-          elapsed += dt;
-          fill(active, Math.min(elapsed / duration, 1));
-          if (elapsed >= duration) goTo(active + 1);
-        }
-        requestAnimationFrame(tick);
-      }
-
-      function start() {
-        if (running || !autoplay) return;
-        running = true;
-        last = 0;
-        requestAnimationFrame(tick);
-      }
-
-      // Slepen (muis en touch): de rij volgt de pointer, loslaten schuift naar de volgende/vorige kaart
-      let drag = null;
-      let dragged = false;
-
-      track.addEventListener('dragstart', (e) => e.preventDefault());
-      track.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || slides.length < 2) return;
-        drag = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, id: e.pointerId, on: false };
+    // Klik op een kaart naast de actieve: eerst daarheen schuiven (niet meteen de video starten).
+    // Na slepen telt de klik niet.
+    track.addEventListener('click', (e) => {
+      if (dragged) {
         dragged = false;
-      });
-      track.addEventListener('pointermove', (e) => {
-        if (!drag || e.pointerId !== drag.id) return;
-        drag.dx = e.clientX - drag.x;
-        if (!drag.on) {
-          // Pas slepen na een paar pixels horizontaal; verticaal = gewoon scrollen
-          if (Math.abs(drag.dx) < 6 || Math.abs(drag.dx) < Math.abs(e.clientY - drag.y)) return;
-          drag.on = true;
-          dragged = true;
-          held = true;
-          track.setPointerCapture(e.pointerId);
-          track.style.transition = 'none';
-          root.setAttribute('data-dg-dragging', '');
-        }
-        track.style.transform = `translateX(${offset + drag.dx}px)`;
-      });
-      function endDrag(e) {
-        if (!drag || e.pointerId !== drag.id) return;
-        const { dx, on, t } = drag;
-        drag = null;
-        if (!on) return;
-        root.removeAttribute('data-dg-dragging');
-        held = root.matches(':hover');
-        const width = seq[pos] ? seq[pos].offsetWidth : root.clientWidth;
-        const fast = Math.abs(dx) / (performance.now() - t) > 0.5;
-        if (Math.abs(dx) > width * 0.15 || (fast && Math.abs(dx) > 30)) goTo(active + (dx < 0 ? 1 : -1), false, dx);
-        else center();
-      }
-      track.addEventListener('pointerup', endDrag);
-      track.addEventListener('pointercancel', endDrag);
-
-      // Klik op een kaart naast de actieve (ook een kloon): eerst daarheen schuiven, niet meteen
-      // de video starten. Na slepen telt de klik niet.
-      track.addEventListener('click', (e) => {
-        const slide = e.target.closest('[data-dg-slide]');
-        const i = seq.indexOf(slide);
-        if (dragged) {
-          dragged = false;
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        if (i === -1 || i === pos) return;
         e.preventDefault();
         e.stopPropagation();
-        goTo(active + (i - pos));
-      }, true);
+        return;
+      }
+      const i = items.indexOf(e.target.closest('[data-dg-slide]'));
+      if (i === -1 || i === current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (loop) loop.toIndex(i, { ...move });
+    }, true);
+    track.addEventListener('pointerdown', () => { dragged = false; });
 
-      filters.forEach((f, i) => {
-        f.addEventListener('click', (e) => {
-          e.preventDefault();
-          if (f.getAttribute('aria-selected') === 'true') return;
-          setFilter(f.getAttribute('data-dg-filter'), true);
-        });
-        // Pijltjes links/rechts tussen de filters
-        f.addEventListener('keydown', (e) => {
-          const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-          if (!dir) return;
-          e.preventDefault();
-          const next = filters[(i + dir + filters.length) % filters.length];
-          setFilter(next.getAttribute('data-dg-filter'), true);
-          next.focus();
-        });
+    filters.forEach((f, i) => {
+      f.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (f.getAttribute('aria-selected') === 'true') return;
+        setFilter(f.getAttribute('data-dg-filter'), true);
       });
-
-      root.addEventListener('pointerenter', () => { held = true; });
-      root.addEventListener('pointerleave', () => { held = false; });
-      root.addEventListener('focusin', () => { held = true; });
-      root.addEventListener('focusout', (e) => {
-        if (!root.contains(e.relatedTarget)) held = false;
+      // Pijltjes links/rechts tussen de filters
+      f.addEventListener('keydown', (e) => {
+        const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!dir) return;
+        e.preventDefault();
+        const next = filters[(i + dir + filters.length) % filters.length];
+        setFilter(next.getAttribute('data-dg-filter'), true);
+        next.focus();
       });
-
-      // Breder scherm kan meer klonen nodig hebben
-      new ResizeObserver(() => {
-        if (slides.length > 1 && setsNeeded() > sets) {
-          buildClones();
-          markActive(true);
-        }
-        center(true);
-      }).observe(root);
-      new IntersectionObserver((entries) => {
-        inView = entries[0].isIntersecting;
-        if (inView) start();
-      }).observe(root);
-
-      root.setAttribute('data-dg-ready', '');
-      const first = filters.find((f) => f.getAttribute('aria-selected') === 'true') || filters[0];
-      setFilter(first ? first.getAttribute('data-dg-filter') : null);
     });
+
+    root.addEventListener('pointerenter', () => { held = true; });
+    root.addEventListener('pointerleave', () => { held = false; });
+    root.addEventListener('focusin', () => { held = true; });
+    root.addEventListener('focusout', (e) => {
+      if (!root.contains(e.relatedTarget)) held = false;
+    });
+
+    // Vóór de resize van de loop zelf (die meet daarna alles opnieuw)
+    // Breder geworden en te weinig kaarten: opnieuw opbouwen met klonen (op dezelfde kaart)
+    window.addEventListener('resize', () => {
+      if (!loop) return;
+      if (roundsNeeded() !== rounds) showCategory(category, true, active);
+      else bleed();
+    });
+    new IntersectionObserver((entries) => {
+      inView = entries[0].isIntersecting;
+      if (inView) start();
+    }).observe(root);
+
+    root.setAttribute('data-dg-ready', '');
+    const first = filters.find((f) => f.getAttribute('aria-selected') === 'true') || filters[0];
+    setFilter(first ? first.getAttribute('data-dg-filter') : null);
   }
 
   // FAQ-accordeon (zoals op de Echo-site, naar Osmo "Accordion CSS"): [data-accordion-css-init]
