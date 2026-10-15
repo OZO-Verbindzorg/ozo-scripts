@@ -2300,27 +2300,26 @@
     return timeline;
   }
 
-  // Ervaringen-slider (doelgroeppagina's), dots en tekst-animatie naar Osmo "Logo Card Testimonials".
+  // Ervaringen-slider (doelgroeppagina's), dots naar Osmo "Logo Card Testimonials".
   // [data-dg-testimonials] bevat een rij kaarten ([data-dg-track] > [data-dg-slide] met
   // data-dg-category) en een bolletjes-rij ([data-dg-dots] met één voorbeeld-[data-dg-dot]).
   // De filterknoppen [data-dg-filter] in dezelfde sectie tonen alleen die doelgroep; de rij wordt
   // dan opnieuw opgebouwd met horizontalLoop (hierboven): oneindig, sleepbaar met inertie, de
   // actieve kaart in het midden van de sectie. Het actieve bolletje loopt vol als timer
   // (data-dg-autoplay in seconden, 0 = alleen klikken). Pauzeert bij hover, focus en buiten beeld.
-  // Tekst met [data-dg-split] komt regel voor regel in beeld (SplitText).
+  // Geen tekst-animatie meer (te druk voor de doelgroep); alleen de zijkaarten vervagen (CSS).
   function initDgTestimonials() {
     const roots = document.querySelectorAll('[data-dg-testimonials]');
     if (!roots.length || !window.gsap) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Draggable + InertiaPlugin (en SplitText) komen niet met Webflow mee; zonder slepen werkt de rij ook
+    // Draggable + InertiaPlugin komen niet met Webflow mee; zonder slepen werkt de rij ook
     const plugins = [
       window.Draggable ? null : loadScript(LIBS.draggable),
-      window.InertiaPlugin ? null : loadScript(LIBS.inertia),
-      window.SplitText || reduceMotion ? null : loadScript(LIBS.splitText)
+      window.InertiaPlugin ? null : loadScript(LIBS.inertia)
     ];
     Promise.allSettled(plugins).then(() => {
-      ['Draggable', 'InertiaPlugin', 'SplitText'].forEach((name) => {
+      ['Draggable', 'InertiaPlugin'].forEach((name) => {
         if (window[name]) gsap.registerPlugin(window[name]);
       });
       roots.forEach((root) => setupDgTestimonials(root, reduceMotion));
@@ -2342,7 +2341,6 @@
     const duration = (isNaN(seconds) ? 6 : seconds) * 1000;
     const autoplay = duration > 0 && !reduceMotion;
     const move = { ease: 'power3', duration: reduceMotion ? 0 : 0.725 };
-    const splits = new Map();
     dotTemplate.remove();
     track.style.justifyContent = 'flex-start';
 
@@ -2359,7 +2357,7 @@
     let inView = false;
     let held = false;
     let dragged = false;
-    let building = false;
+    let steering = false; // tijdens een klik/autoplay-beweging staat de actieve kaart al vast
 
     // De rij loopt tot de randen van de sectie, zodat kaarten pas buiten beeld achteraan terugkomen
     function bleed() {
@@ -2376,33 +2374,9 @@
       if (el) el.style.transform = `scaleX(${value})`;
     }
 
-    // Regels van de nieuwe kaart laten opkomen (zoals Osmo: per regel, licht verspringend)
-    function reveal(slide) {
-      if (reduceMotion || !slide) return;
-      slide.querySelectorAll('[data-dg-split]').forEach((el, n) => {
-        if (window.SplitText) {
-          if (!splits.has(el)) splits.set(el, SplitText.create(el, { type: 'lines', autoSplit: true }));
-          gsap.fromTo(splits.get(el).lines, { opacity: 0, yPercent: 40 }, {
-            opacity: 1,
-            yPercent: 0,
-            duration: 0.8,
-            ease: 'power3.out',
-            stagger: { amount: 0.3 },
-            delay: 0.35 + n * 0.1
-          });
-        } else {
-          el.animate([{ opacity: 0, transform: 'translateY(1rem)' }, { opacity: 1, transform: 'none' }], {
-            duration: 700,
-            delay: 350 + n * 100,
-            easing: 'cubic-bezier(.22, .61, .36, 1)',
-            fill: 'backwards'
-          });
-        }
-      });
-    }
-
     // Vanuit de loop (ook tijdens slepen): actieve kaart, bolletjes en timer bijwerken
-    function setActive(itemIndex, quiet) {
+    function setActive(itemIndex) {
+      itemIndex = ((itemIndex % items.length) + items.length) % items.length;
       if (itemIndex === current) return;
       current = itemIndex;
       active = itemIndex % slides.length;
@@ -2417,7 +2391,15 @@
         dot.setAttribute('aria-current', String(i === active));
         fill(i, i === active && !autoplay ? 1 : 0);
       });
-      if (!quiet) reveal(items[current]);
+    }
+
+    // Klik, bolletje of autoplay: de doelkaart wordt meteen actief, zodat de blur gelijk met de
+    // beweging verschuift (niet halverwege omklapt)
+    function steer(itemIndex) {
+      if (!loop) return;
+      setActive(itemIndex);
+      steering = !reduceMotion;
+      loop.toIndex(itemIndex, { ...move, onComplete: () => { steering = false; } });
     }
 
     // Naar kaart i van de doelgroep: met klonen de dichtstbijzijnde kopie daarvan
@@ -2430,7 +2412,7 @@
         const bd = Math.min(Math.abs(best - current), len - Math.abs(best - current));
         if (d < bd) best = j;
       }
-      loop.toIndex(best, { ...move });
+      steer(best);
     }
 
     // Eén ronde kaarten moet breder zijn dan de sectie plus één kaart, anders komt er zichtbaar
@@ -2479,7 +2461,7 @@
         swapped = true;
         // Ook vervaging van eerdere klikken opruimen (die blijven anders op 0 staan)
         [track, dotsWrap].forEach((el) => el.getAnimations().forEach((anim) => anim.cancel()));
-        showCategory(category, true);
+        showCategory(category);
         const fadeIn = { duration: 450, easing: 'cubic-bezier(.22, .61, .36, 1)' };
         [track, dotsWrap].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn));
         held = root.matches(':hover') || root.contains(document.activeElement);
@@ -2488,7 +2470,7 @@
       setTimeout(swap, 320); // vangnet als de animatie niet afrondt (bv. tab op de achtergrond)
     }
 
-    function showCategory(cat, quiet, startAt) {
+    function showCategory(cat, startAt) {
       if (loop) loop.destroy();
       loop = null;
       removeClones();
@@ -2530,17 +2512,18 @@
           items = items.concat(copies);
         }
         bleed();
-        building = true;
+        steering = false;
         loop = horizontalLoop(items, {
           paused: true,
           draggable: true,
           center: section,
           paddingRight: parseFloat(getComputedStyle(track).columnGap) || 0,
-          onChange: (el, i) => setActive(i, building)
+          onChange: (el, i) => { if (!steering) setActive(i); }
         });
         loop.toIndex(startAt || 0, { duration: 0 });
-        building = false;
         if (loop.draggable) {
+          // Slepen neemt het over van een lopende klik-beweging
+          loop.draggable.addEventListener('press', () => { steering = false; });
           loop.draggable.addEventListener('dragstart', () => {
             dragged = true;
             held = true;
@@ -2552,11 +2535,9 @@
           });
         }
       }
-      setActive(startAt || 0, true);
+      setActive(startAt || 0);
       void track.offsetWidth;
       allSlides.forEach((s) => { s.style.transition = ''; });
-      // Bij wisselen via de filter alleen vervagen, geen regel-animatie van de quote
-      if (!quiet) reveal(items[current]);
     }
 
     function tick(now) {
@@ -2571,7 +2552,7 @@
         fill(active, Math.min(elapsed / duration, 1));
         if (elapsed >= duration) {
           elapsed = 0;
-          loop.next({ ...move });
+          steer(current + 1);
         }
       }
       requestAnimationFrame(tick);
@@ -2597,7 +2578,7 @@
       if (i === -1 || i === current) return;
       e.preventDefault();
       e.stopPropagation();
-      if (loop) loop.toIndex(i, { ...move });
+      steer(i);
     }, true);
     track.addEventListener('pointerdown', () => { dragged = false; });
 
@@ -2629,7 +2610,7 @@
     // Breder geworden en te weinig kaarten: opnieuw opbouwen met klonen (op dezelfde kaart)
     window.addEventListener('resize', () => {
       if (!loop) return;
-      if (roundsNeeded() !== rounds) showCategory(category, true, active);
+      if (roundsNeeded() !== rounds) showCategory(category, active);
       else bleed();
     });
     new IntersectionObserver((entries) => {
