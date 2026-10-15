@@ -2245,9 +2245,12 @@
   // [data-dg-testimonials] bevat een rij kaarten ([data-dg-track] > [data-dg-slide] met
   // data-dg-category) en een bolletjes-rij ([data-dg-dots] met één voorbeeld-[data-dg-dot]).
   // De filterknoppen [data-dg-filter] in dezelfde sectie tonen alleen die doelgroep. De actieve
-  // kaart staat in het midden; het actieve bolletje loopt vol als timer (data-dg-autoplay in
+  // kaart staat altijd in het midden; het actieve bolletje loopt vol als timer (data-dg-autoplay in
   // seconden, 0 = alleen klikken). Pauzeert bij hover, focus en buiten beeld. Tekst met
   // [data-dg-split] komt regel voor regel in beeld (SplitText als Webflow die laadt).
+  // Oneindige rij: links en rechts staan klonen van de kaarten van de gekozen doelgroep
+  // ([data-dg-clone], niet bedienbaar), zodat er nooit een lege kant is. Voorbij de laatste kaart
+  // springt de rij eerst ongemerkt naar de gelijke kloon en schuift dan naar de echte kaart.
   function initDgTestimonials() {
     document.querySelectorAll('[data-dg-testimonials]').forEach((root) => {
       const section = root.closest('section') || document;
@@ -2273,9 +2276,14 @@
         loadScript(LIBS.splitText).then(() => gsap.registerPlugin(SplitText)).catch(() => {});
       }
 
-      let slides = [];
+      let slides = []; // echte kaarten van de gekozen doelgroep
+      let seq = []; // klonen + echte kaarten + klonen, zoals ze in de rij staan
+      let clones = [];
+      let sets = 0; // aantal kloon-rondes aan elke kant
+      let base = 0; // plek van de eerste echte kaart in seq
+      let pos = -1; // plek van de actieve kaart in seq
+      let active = -1; // index van de actieve kaart in slides
       let dots = [];
-      let active = -1;
       let elapsed = 0;
       let last = 0;
       let running = false;
@@ -2289,12 +2297,27 @@
 
       let offset = 0;
 
-      function center(instant) {
-        const slide = slides[active];
+      function center(instant, extra) {
+        const slide = seq[pos];
         if (!slide) return;
         offset = root.clientWidth / 2 - (slide.offsetLeft + slide.offsetWidth / 2);
         track.style.transition = instant || reduceMotion ? 'none' : '';
-        track.style.transform = `translateX(${offset}px)`;
+        track.style.transform = `translateX(${offset + (extra || 0)}px)`;
+      }
+
+      // Zet de actieve kaart; quiet = zonder overgang (opacity/blur), voor de onzichtbare sprong
+      function markActive(quiet) {
+        if (quiet) seq.forEach((el) => { el.style.transition = 'none'; });
+        seq.forEach((el, i) => el.setAttribute('data-dg-active', String(i === pos)));
+        slides.forEach((slide, i) => {
+          const on = i === active;
+          slide.setAttribute('aria-hidden', String(!on));
+          slide.querySelectorAll('a, button').forEach((el) => { el.tabIndex = on ? 0 : -1; });
+        });
+        if (quiet) {
+          void track.offsetWidth;
+          seq.forEach((el) => { el.style.transition = ''; });
+        }
       }
 
       // Regels van de nieuwe kaart laten opkomen (zoals Osmo: per regel, licht verspringend)
@@ -2322,23 +2345,76 @@
         });
       }
 
-      function goTo(index, instant) {
-        index = (index + slides.length) % slides.length;
-        if (index === active) return;
-        active = index;
+      // index mag buiten 0..n-1 vallen (active + 1 na de laatste); dx = hoe ver de rij nog versleept staat
+      function goTo(index, instant, dx) {
+        const n = slides.length;
+        if (!n) return;
+        const target = ((index % n) + n) % n;
+        if (pos > -1 && target === active) {
+          center();
+          return;
+        }
+        let next = pos === -1 ? base + target : pos + (index - active);
+        // Zou de rij op een kloon eindigen: eerst onzichtbaar een ronde terug (of vooruit) springen
+        const shift = next >= base + n ? -n : next < base ? n : 0;
+        if (shift && pos > -1) {
+          pos += shift;
+          next += shift;
+          markActive(true);
+          center(true, dx);
+          void track.offsetWidth;
+        }
+        pos = next;
+        active = target;
         elapsed = 0;
-        slides.forEach((slide, i) => {
-          const on = i === active;
-          slide.setAttribute('data-dg-active', String(on));
-          slide.setAttribute('aria-hidden', String(!on));
-          slide.querySelectorAll('a, button').forEach((el) => { el.tabIndex = on ? 0 : -1; });
-        });
+        markActive(instant);
         dots.forEach((dot, i) => {
           dot.setAttribute('aria-current', String(i === active));
           fill(i, i === active && !autoplay ? 1 : 0);
         });
         center(instant);
         if (!instant) reveal(slides[active]);
+      }
+
+      // Breedte van één ronde kaarten (incl. tussenruimte)
+      function setWidth() {
+        const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+        return slides.reduce((sum, s) => sum + s.offsetWidth + gap, 0);
+      }
+
+      // Genoeg rondes klonen dat ook tijdens een sprong beide kanten vol staan
+      function setsNeeded() {
+        if (slides.length < 2) return 0;
+        const widest = Math.max(...slides.map((s) => s.offsetWidth));
+        return Math.max(1, Math.ceil((root.clientWidth / 2 + widest * 2) / (setWidth() || 1)));
+      }
+
+      function buildClones() {
+        clones.forEach((c) => {
+          c.querySelectorAll('[data-dg-split]').forEach((el) => splits.delete(el));
+          c.remove();
+        });
+        sets = setsNeeded();
+        const make = () => slides.map((s) => {
+          const c = s.cloneNode(true);
+          c.setAttribute('data-dg-clone', '');
+          c.setAttribute('aria-hidden', 'true');
+          c.querySelectorAll('a, button').forEach((el) => { el.tabIndex = -1; });
+          c.style.transition = '';
+          return c;
+        });
+        const before = [];
+        const after = [];
+        for (let r = 0; r < sets; r++) {
+          before.push(...make());
+          after.push(...make());
+        }
+        track.prepend(...before);
+        track.append(...after);
+        clones = [...before, ...after];
+        seq = [...before, ...slides, ...after];
+        base = before.length;
+        if (active > -1) pos = base + active;
       }
 
       let swapToken = 0;
@@ -2387,6 +2463,9 @@
           s.hidden = !slides.includes(s);
           s.removeAttribute('data-dg-active');
         });
+        active = -1;
+        pos = -1;
+        buildClones();
         dotsWrap.replaceChildren();
         dots = slides.map((slide, i) => {
           const dot = dotTemplate.cloneNode(true);
@@ -2396,7 +2475,6 @@
           return dot;
         });
         dotsWrap.hidden = slides.length < 2;
-        active = -1;
         goTo(0, true);
         void track.offsetWidth;
         allSlides.forEach((s) => { s.style.transition = ''; });
@@ -2458,29 +2536,29 @@
         if (!on) return;
         root.removeAttribute('data-dg-dragging');
         held = root.matches(':hover');
-        const width = slides[active] ? slides[active].offsetWidth : root.clientWidth;
+        const width = seq[pos] ? seq[pos].offsetWidth : root.clientWidth;
         const fast = Math.abs(dx) / (performance.now() - t) > 0.5;
-        if (Math.abs(dx) > width * 0.15 || (fast && Math.abs(dx) > 30)) goTo(active + (dx < 0 ? 1 : -1));
+        if (Math.abs(dx) > width * 0.15 || (fast && Math.abs(dx) > 30)) goTo(active + (dx < 0 ? 1 : -1), false, dx);
         else center();
       }
       track.addEventListener('pointerup', endDrag);
       track.addEventListener('pointercancel', endDrag);
 
-      // Klik op een kaart naast de actieve: eerst daarheen schuiven (niet meteen de video starten).
-      // Na slepen telt de klik niet.
+      // Klik op een kaart naast de actieve (ook een kloon): eerst daarheen schuiven, niet meteen
+      // de video starten. Na slepen telt de klik niet.
       track.addEventListener('click', (e) => {
         const slide = e.target.closest('[data-dg-slide]');
-        const i = slides.indexOf(slide);
+        const i = seq.indexOf(slide);
         if (dragged) {
           dragged = false;
           e.preventDefault();
           e.stopPropagation();
           return;
         }
-        if (i === -1 || i === active) return;
+        if (i === -1 || i === pos) return;
         e.preventDefault();
         e.stopPropagation();
-        goTo(i);
+        goTo(active + (i - pos));
       }, true);
 
       filters.forEach((f, i) => {
@@ -2507,7 +2585,14 @@
         if (!root.contains(e.relatedTarget)) held = false;
       });
 
-      new ResizeObserver(() => center(true)).observe(root);
+      // Breder scherm kan meer klonen nodig hebben
+      new ResizeObserver(() => {
+        if (slides.length > 1 && setsNeeded() > sets) {
+          buildClones();
+          markActive(true);
+        }
+        center(true);
+      }).observe(root);
       new IntersectionObserver((entries) => {
         inView = entries[0].isIntersecting;
         if (inView) start();
@@ -2620,11 +2705,12 @@
       dialog.showModal();
     }
 
-    buttons.forEach((button) => {
-      button.addEventListener('click', (e) => {
-        e.preventDefault();
-        open(button);
-      });
+    // Via de document-klik, zodat ook gekloonde kaarten (ervaringen-slider) werken
+    document.addEventListener('click', (e) => {
+      const button = e.target.closest('[data-dg-video-play][data-vimeo-id]');
+      if (!button) return;
+      e.preventDefault();
+      open(button);
     });
   }
 
