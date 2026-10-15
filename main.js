@@ -1316,11 +1316,37 @@
           player.pause();
         }
 
-        // Scroll-based autoplay
-        function checkVisibility() {
+        // Scroll-based autoplay: alleen iets doen als de zichtbaarheid verandert, hooguit één keer
+        // per frame. Eerder ging bij elke scroll-tik een play() naar de iframe, wat op mobiel haperde.
+        let fixedHost = null;
+        for (let el = vimeoElement; el && el !== document.body; el = el.parentElement) {
+          if (getComputedStyle(el).position === "fixed") {
+            fixedHost = el;
+            break;
+          }
+        }
+        let wasInView = null;
+        let checkQueued = false;
+
+        function isInView() {
+          // Een vaste hero staat altijd 'in beeld'; hij is weg zodra je er een schermhoogte voorbij bent
+          if (fixedHost) return window.scrollY < window.innerHeight;
           const rect = vimeoElement.getBoundingClientRect();
-          const inView = rect.top < window.innerHeight && rect.bottom > 0;
+          return rect.top < window.innerHeight && rect.bottom > 0;
+        }
+
+        function checkVisibility() {
+          checkQueued = false;
+          const inView = isInView();
+          if (inView === wasInView) return;
+          wasInView = inView;
           inView ? vimeoPlayerPlay() : vimeoPlayerPause();
+        }
+
+        function queueVisibilityCheck() {
+          if (checkQueued) return;
+          checkQueued = true;
+          requestAnimationFrame(checkVisibility);
         }
 
         // Autoplay
@@ -1328,7 +1354,7 @@
           player.pause();
         } else if (vimeoElement.getAttribute("data-vimeo-paused-by-user") === "false") {
           checkVisibility();
-          window.addEventListener("scroll", checkVisibility);
+          window.addEventListener("scroll", queueVisibilityCheck, { passive: true });
         }
 
         // Click: Play
@@ -1345,7 +1371,7 @@
             // If paused by user => kill the scroll-based autoplay
             if (vimeoElement.getAttribute("data-vimeo-autoplay") === "true") {
               vimeoElement.setAttribute("data-vimeo-paused-by-user", "true");
-              window.removeEventListener("scroll", checkVisibility);
+              window.removeEventListener("scroll", queueVisibilityCheck);
             }
           });
         }
