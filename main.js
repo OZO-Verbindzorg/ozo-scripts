@@ -2647,7 +2647,12 @@
     }).observe(root);
 
     root.setAttribute('data-dg-ready', '');
-    const first = filters.find((f) => f.getAttribute('aria-selected') === 'true') || filters[0];
+    // Startfilter: data-dg-start op de root (component-prop "Start-filter"), anders aria-selected, anders de eerste
+    const startFilter = (root.getAttribute('data-dg-start') || '').trim().toLowerCase();
+    const first =
+      filters.find((f) => startFilter && f.getAttribute('data-dg-filter') === startFilter) ||
+      filters.find((f) => f.getAttribute('aria-selected') === 'true') ||
+      filters[0];
     setFilter(first ? first.getAttribute('data-dg-filter') : null);
   }
 
@@ -2690,6 +2695,7 @@
   // Video-popup (doelgroeppagina's): een knop met [data-dg-video-play] en data-vimeo-id="123456"
   // opent die Vimeo-video in een <dialog>. Sluiten (Esc, kruisje of klik naast de video) haalt
   // de iframe weg, zodat het geluid direct stopt. Opmaak staat in Global CSS v2 (.dg-video-dialog).
+  // Staande video's: data-vimeo-ratio="9/16" op de knop (standaard 16/9).
   function initVideoPopup() {
     const buttons = document.querySelectorAll('[data-dg-video-play][data-vimeo-id]');
     if (!buttons.length) return;
@@ -2747,6 +2753,16 @@
       iframe.allow = 'autoplay; fullscreen; picture-in-picture';
       iframe.setAttribute('allowfullscreen', '');
       frame.replaceChildren(iframe);
+
+      // Andere verhouding dan 16/9: frame zo groot mogelijk binnen het scherm (zelfde marges als de CSS)
+      const ratio = /^\s*(\d+(?:\.\d+)?)\s*[/:]\s*(\d+(?:\.\d+)?)\s*$/.exec(button.getAttribute('data-vimeo-ratio') || '');
+      if (ratio && +ratio[1] > 0 && +ratio[2] > 0) {
+        frame.style.aspectRatio = `${ratio[1]} / ${ratio[2]}`;
+        frame.style.width = `min(100%, 70rem, calc((100dvh - 9rem) * ${ratio[1]} / ${ratio[2]}))`;
+      } else {
+        frame.style.aspectRatio = '';
+        frame.style.width = '';
+      }
 
       if (window.lenis) window.lenis.stop();
       dialog.showModal();
