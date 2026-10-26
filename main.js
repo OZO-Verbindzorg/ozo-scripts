@@ -2456,10 +2456,7 @@
     }
 
     function removeClones() {
-      track.querySelectorAll('[data-dg-clone]').forEach((c) => {
-        c.querySelectorAll('[data-dg-split]').forEach((el) => splits.delete(el));
-        c.remove();
-      });
+      track.querySelectorAll('[data-dg-clone]').forEach((c) => c.remove());
     }
 
     let rounds = 1;
