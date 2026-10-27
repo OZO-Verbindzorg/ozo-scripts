@@ -2789,6 +2789,8 @@
   const LAPOSTA_TEXT = {
     loading: 'Bezig…',
     invalid: 'Vul je e-mailadres in en kies wie je bent.',
+    invalidEmail: 'Vul nog je e-mailadres in.',
+    invalidRole: 'Kies nog wie je bent.',
     error: 'Er ging iets mis. Controleer je e-mailadres en probeer het opnieuw.'
   };
 
@@ -2894,17 +2896,43 @@
         wrap.setAttribute('data-laposta-state', 'error');
       }
 
+      // Melding noemt alleen wat nog ontbreekt: e-mail, rol of allebei
+      const emailInput = form.querySelector('input[type="email"]:not([data-hp])');
+      let invalidShown = false;
+      function missingText() {
+        const emailOk = !emailInput || (emailInput.value.trim() !== '' && emailInput.checkValidity());
+        const roleOk = !form.querySelector('input[type="radio"]') || !!form.querySelector('input[type="radio"]:checked');
+        if (emailOk && roleOk) return '';
+        if (emailOk) return LAPOSTA_TEXT.invalidRole;
+        if (roleOk) return LAPOSTA_TEXT.invalidEmail;
+        return LAPOSTA_TEXT.invalid;
+      }
+      // Staat de melding er al, dan loopt hij mee met wat je invult (en verdwijnt als alles klopt)
+      ['input', 'change'].forEach((type) => form.addEventListener(type, () => {
+        if (!invalidShown) return;
+        const text = missingText();
+        if (text) {
+          showError(text);
+        } else {
+          invalidShown = false;
+          hide(error);
+          wrap.setAttribute('data-laposta-state', 'idle');
+        }
+      }));
+
       // Capture + stopImmediatePropagation: oude submit-handlers (iframe-script) draaien niet mee
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (busy) return;
         hide(error);
+        invalidShown = false;
 
         // Valideren via initAdvancedFormValidation (TESTCODE)
         if (typeof form.__validate === 'function' && !form.__validate()) {
           lapostaLog('Niet verstuurd: e-mail of rol niet goed ingevuld');
-          showError(LAPOSTA_TEXT.invalid);
+          showError(missingText() || LAPOSTA_TEXT.invalid);
+          invalidShown = true;
           return;
         }
 
