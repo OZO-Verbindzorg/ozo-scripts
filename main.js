@@ -2693,9 +2693,20 @@
   }
 
   // Video-popup (doelgroeppagina's): een knop met [data-dg-video-play] en data-vimeo-id="123456"
-  // opent die Vimeo-video in een <dialog>. Sluiten (Esc, kruisje of klik naast de video) haalt
+  // opent die Vimeo-video in een <dialog>. Een YouTube-ID of een Vimeo-/YouTube-link mag ook. Sluiten (Esc, kruisje of klik naast de video) haalt
   // de iframe weg, zodat het geluid direct stopt. Opmaak staat in Global CSS v2 (.dg-video-dialog).
   // Staande video's: data-vimeo-ratio="9/16" op de knop (standaard 16/9).
+  // Vimeo-nummer, YouTube-ID (11 tekens) of een volledige link → embed-adres, anders null.
+  // dnt=1 en youtube-nocookie: geen tracking-cookies
+  function videoEmbedSrc(value) {
+    const v = (value || '').trim();
+    const vimeo = /^(?:https?:\/\/)?(?:www\.|player\.)?(?:vimeo\.com\/(?:video\/)?)?(\d+)(?:[/?#].*)?$/.exec(v);
+    if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?autoplay=1&dnt=1&title=0&byline=0&portrait=0`;
+    const yt = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(v) || /^([\w-]{11})$/.exec(v);
+    if (yt) return `https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&rel=0`;
+    return null;
+  }
+
   function initVideoPopup() {
     const buttons = document.querySelectorAll('[data-dg-video-play][data-vimeo-id]');
     if (!buttons.length) return;
@@ -2741,14 +2752,13 @@
     }
 
     function open(button) {
-      const id = button.getAttribute('data-vimeo-id');
-      if (!/^\d+$/.test(id)) return;
+      const src = videoEmbedSrc(button.getAttribute('data-vimeo-id'));
+      if (!src) return;
       if (!dialog) build();
       lastButton = button;
 
-      // dnt=1: Vimeo zet geen tracking-cookies
       const iframe = document.createElement('iframe');
-      iframe.src = `https://player.vimeo.com/video/${id}?autoplay=1&dnt=1&title=0&byline=0&portrait=0`;
+      iframe.src = src;
       iframe.title = button.getAttribute('aria-label') || 'Video';
       iframe.allow = 'autoplay; fullscreen; picture-in-picture';
       iframe.setAttribute('allowfullscreen', '');
