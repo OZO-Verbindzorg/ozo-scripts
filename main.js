@@ -2372,6 +2372,28 @@
     if (!track || !allSlides.length || !dotTemplate) return;
     if (filterWrap) filterWrap.style.setProperty('--toggle-count', filters.length);
 
+    // Knoppen zijn zo breed als hun tekst: het blokje krijgt de plek en breedte van de actieve knop
+    // en rekt mee bij het wisselen (CSS: .dg-filter.is-measured)
+    let activeFilter = 0;
+    function placeToggle() {
+      const button = filters[activeFilter];
+      if (!filterWrap || !button) return;
+      const first = !filterWrap.classList.contains('is-measured');
+      const bg = first && filterWrap.querySelector('.dg-filter_bg');
+      if (bg) bg.style.transition = 'none';
+      filterWrap.style.setProperty('--toggle-x', `${button.offsetLeft}px`);
+      filterWrap.style.setProperty('--toggle-w', `${button.offsetWidth}px`);
+      filterWrap.classList.add('is-measured');
+      if (bg) {
+        void bg.offsetWidth;
+        bg.style.transition = '';
+      }
+    }
+    if (filterWrap && window.ResizeObserver) {
+      const resize = new ResizeObserver(() => placeToggle());
+      [filterWrap, ...filters].forEach((el) => resize.observe(el));
+    }
+
     const seconds = parseFloat(root.getAttribute('data-dg-autoplay'));
     const duration = (isNaN(seconds) ? 6 : seconds) * 1000;
     const autoplay = duration > 0 && !reduceMotion;
@@ -2471,7 +2493,11 @@
     function setFilter(category, animate) {
       // Schuivend blokje achter de actieve filter (naar Osmo "Toggle Switch")
       const filterIndex = filters.findIndex((f) => f.getAttribute('data-dg-filter') === category);
-      if (filterWrap && filterIndex > -1) filterWrap.style.setProperty('--toggle-active', filterIndex);
+      if (filterWrap && filterIndex > -1) {
+        filterWrap.style.setProperty('--toggle-active', filterIndex);
+        activeFilter = filterIndex;
+        placeToggle();
+      }
       filters.forEach((f, i) => {
         f.setAttribute('aria-selected', String(i === filterIndex));
         f.tabIndex = i === filterIndex ? 0 : -1;
