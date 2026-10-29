@@ -948,6 +948,20 @@
     state.isMobile ? setupMobile() : resetDesktop();
   }
 
+  // Menufoto's alvast ophalen en uitpakken, zodat het menu de eerste keer ook soepel openklapt
+  function initMegaNavImages() {
+    const imgs = [...document.querySelectorAll('[data-nav-content] img')];
+    if (!imgs.length) return;
+    // Na het laden van de pagina, als de browser tijd heeft
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
+    const warm = () => idle(() => imgs.forEach((img) => {
+      img.loading = 'eager';
+      if (img.decode) img.decode().catch(() => {});
+    }));
+    if (document.readyState === 'complete') warm();
+    else window.addEventListener('load', warm, { once: true });
+  }
+
   // Search toggle
   function initSearchToggle() {
     const r = document.documentElement,
@@ -3134,6 +3148,7 @@
       initSearchTerm,
       initNavScroll,
       initMegaNavDirectionalHover,
+      initMegaNavImages,
       initSearchToggle,
       initAdvancedFormValidation,
       initVimeoBackground,
