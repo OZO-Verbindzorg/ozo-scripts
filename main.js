@@ -1963,8 +1963,8 @@
       // ---------- Instellingen ----------
       const autoSpeed = 100; // basissnelheid (px per seconde)
       const viewport = [
-        // [min-breedte, snelheid-schaal, golflengte-schaal, stijgende boog]
-        // Stijgende boog (mobiel): één halve golf over de schermbreedte, links laag en rechts hoog
+        // [min-breedte, snelheid-schaal, golflengte-schaal, boog]
+        // Boog (mobiel): één boog over de schermbreedte, hoog in het midden en laag aan beide randen
         [992, 1, 1, false],
         [768, 0.75, 1, false],
         [480, 0.6, 0.75, true],
@@ -2012,7 +2012,7 @@
         direction = baseDirection;
       let isActive = false,
         isDragging = false;
-      let [speedScale, waveScale, rising] = getViewport();
+      let [speedScale, waveScale, arch] = getViewport();
 
       // Marge boven/onder de container voordat de animatie pauzeert
       const getPauseMargin = () => pausePadding + innerHeight * pauseBuffer;
@@ -2041,7 +2041,7 @@
         const originalItems = firstItems.slice(0, originals.length);
         averageWidth = originalItems.reduce((sum, item) => sum + item.offsetWidth, 0) / originals
           .length;
-        waveLength = rising ? container.offsetWidth * 2 :
+        waveLength = arch ? container.offsetWidth * 2 :
           Math.max(container.offsetWidth, averageWidth * itemsPerWave) * waveScale;
 
         let maxHeight = 0;
@@ -2072,11 +2072,15 @@
           const itemX = item._x + x;
           if (itemX + item._width < 0 || itemX > containerWidth) continue;
 
-          // Stijgende boog rekent vanaf het midden van het item, met een dal links in beeld
-          const phase = rising ?
-            (itemX + item._width / 2) / waveLength * fullCircle + Math.PI / 2 + phaseTravel :
-            itemX / waveLength * fullCircle + phaseTravel;
-          item._setY(Math.sin(phase) * item._height * dynamicWaveY);
+          // Boog rekent vanaf het midden van het item: top in het midden van het scherm,
+          // even laag aan beide randen (zelfde hoogteverschil als de golf)
+          if (arch) {
+            const phase = ((itemX + item._width / 2) / containerWidth - 0.5) * Math.PI + phaseTravel;
+            item._setY((1 - 2 * Math.cos(phase)) * item._height * dynamicWaveY);
+          } else {
+            const phase = itemX / waveLength * fullCircle + phaseTravel;
+            item._setY(Math.sin(phase) * item._height * dynamicWaveY);
+          }
         }
       }
 
@@ -2136,7 +2140,7 @@
       gsap.ticker.add(tick);
 
       container._wavyMarqueeResize = debounceOnWidthChange(() => {
-        [speedScale, waveScale, rising] = getViewport();
+        [speedScale, waveScale, arch] = getViewport();
         buildLoop();
         ScrollTrigger.refresh();
       }, 150);
