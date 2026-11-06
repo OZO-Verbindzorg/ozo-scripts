@@ -3506,8 +3506,8 @@
           trigger: stepEls[0], start: at, endTrigger: stepEls[2], end: at, animation: tl, scrub: 0.7,
           onUpdate: function (self) { setActive(self.progress); }
         });
-        if (!ctx.conditions.mob) return;
-        // Mobiel: de tekst vervaagt geleidelijk naar de randen (onder het beeld en onderaan het scherm), zonder sprong
+        // De tekst vervaagt geleidelijk naar de randen, zonder sprong. Mobiel: onder het beeld en onderaan het scherm.
+        // Desktop: boven- en onderaan het scherm, zodat de stap naast de puzzel al leesbaar is voordat hij het midden bereikt.
         var raf = 0;
         function fade() {
           raf = 0;
@@ -3516,7 +3516,9 @@
             var el = stepEls[i];
             if (!el.firstElementChild) continue;
             var t = el.firstElementChild.getBoundingClientRect().top, b = el.lastElementChild.getBoundingClientRect().bottom;
-            var o = Math.min(clamp((b - vb - 10) / 110), clamp((vh * 0.95 - t) / (vh * 0.35)));
+            var o = ctx.conditions.mob
+              ? Math.min(clamp((b - vb - 10) / 110), clamp((vh * 0.95 - t) / (vh * 0.35)))
+              : Math.min(clamp((b - vh * 0.12) / (vh * 0.2)), clamp((vh * 0.92 - t) / (vh * 0.3)));
             el.style.transition = 'none';
             el.style.opacity = (0.22 + 0.78 * o).toFixed(3);
           }
