@@ -1397,6 +1397,14 @@
     }
   }
 
+  // Scrolt de pagina nu? Lenis meldt alleen zijn eigen scroll: bij touch en de scrollbalk blijft
+  // isScrolling meestal false, dus tellen de native scroll-events ook mee (tot 150 ms na de laatste).
+  let lastScrollAt = -Infinity;
+  window.addEventListener('scroll', () => { lastScrollAt = performance.now(); }, { passive: true });
+  function pageIsScrolling() {
+    return !!(window.lenis && window.lenis.isScrolling) || performance.now() - lastScrollAt < 150;
+  }
+
   // Hero wave: subtiele, organisch bewegende golf
   function initHeroWave() {
     const waves = document.querySelectorAll("[data-hero-wave]");
@@ -1456,11 +1464,18 @@
       if (reduceMotion) return;
 
       let running = false;
-      const start = performance.now();
+      let clock = 0; // seconden; staat stil tijdens scrollen, daarna gaat de vorm verder waar hij was
+      let last = 0;
 
-      function tick() {
+      // Tijdens scrollen niet tekenen: het vormen per frame kost de scroll zijn soepelheid
+      function tick(now) {
         if (!running) return;
-        render((performance.now() - start) / 1000);
+        const dt = last ? Math.min(now - last, 100) : 0;
+        last = now;
+        if (!pageIsScrolling()) {
+          clock += dt / 1000;
+          render(clock);
+        }
         requestAnimationFrame(tick);
       }
 
@@ -1588,11 +1603,18 @@
       if (reduceMotion) return;
 
       let running = false;
-      const start = performance.now();
+      let clock = 0; // seconden; staat stil tijdens scrollen, daarna gaat de vorm verder waar hij was
+      let last = 0;
 
-      function tick() {
+      // Tijdens scrollen niet tekenen: het vormen per frame kost de scroll zijn soepelheid
+      function tick(now) {
         if (!running) return;
-        render((performance.now() - start) / 1000);
+        const dt = last ? Math.min(now - last, 100) : 0;
+        last = now;
+        if (!pageIsScrolling()) {
+          clock += dt / 1000;
+          render(clock);
+        }
         requestAnimationFrame(tick);
       }
 
