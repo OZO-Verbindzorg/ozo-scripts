@@ -271,6 +271,306 @@
     });
   }
 
+  // Zoekpagina: Webflow-resultaten als OZO-kaarten, echte snippets (zonder menu/footer-tekst),
+  // valse treffers (term alleen in menu/footer) eruit, FAQ-antwoorden erbij, filters en lege staat.
+  function initSearchPage() {
+    const root = document.querySelector('[data-sr]');
+    if (!root) return;
+    const query = (new URLSearchParams(location.search).get('query') || '').trim();
+    const list = root.querySelector('[data-sr-list]');
+    const faqList = root.querySelector('[data-sr-faq-list]');
+    const countEl = root.querySelector('[data-sr-count]');
+    const filtersEl = root.querySelector('[data-sr-filters]');
+    const tplCard = root.querySelector('[data-sr-card-template]');
+    const tplFaq = root.querySelector('[data-sr-faq-template]');
+    if (tplCard) tplCard.remove();
+    if (tplFaq) tplFaq.remove();
+    if (!query) { root.setAttribute('data-sr-state', 'idle'); return; }
+    root.setAttribute('data-sr-state', 'loading');
+
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const STOP = new Set(['de', 'het', 'een', 'en', 'of', 'van', 'in', 'op', 'te', 'ik', 'je', 'mijn', 'is', 'wat', 'hoe', 'voor', 'met', 'aan', 'bij', 'om', 'er', 'die', 'dat']);
+    const terms = norm(query).split(/[^a-z0-9@.-]+/).filter((t) => t.length > 1 && !STOP.has(t));
+    if (!terms.length) terms.push(norm(query));
+    const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const reTerms = new RegExp('(' + terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+
+    // Categorie per pad
+    const GROUPS = { voor: 'Voor wie', over: 'Over OZO', werk: 'Werken bij', hulp: 'Hulp & contact' };
+    function categorize(path) {
+      const p = path.replace(/\/$/, '') || '/';
+      const m = p.match(/^\/voor\/([^/]+)/);
+      if (m) {
+        const s = m[1];
+        if (/ouderenzorg|ggz|sociaal|jeugdzorg/.test(s)) return { group: 'voor', tag: 'Professionals', mod: 'is-pro' };
+        if (s === 'gemeenten') return { group: 'voor', tag: 'Gemeenten', mod: 'is-gemeente' };
+        if (s === 'it-partners') return { group: 'voor', tag: 'IT-partners', mod: 'is-it' };
+        if (s === 'mantelzorgers') return { group: 'voor', tag: 'Mantelzorgers', mod: '' };
+        return { group: 'voor', tag: 'Cliënt & familie', mod: '' };
+      }
+      if (/^\/werken-bij\/./.test(p)) return { group: 'werk', tag: 'Vacature', mod: 'is-werk' };
+      if (p === '/werken-bij') return { group: 'werk', tag: 'Werken bij', mod: 'is-werk' };
+      if (/^\/(faq|contact|privacy-veiligheid)/.test(p)) return { group: 'hulp', tag: 'Hulp & contact', mod: 'is-hulp' };
+      return { group: 'over', tag: p === '/' ? 'Home' : 'Over OZO', mod: 'is-over' };
+    }
+    const crumbOf = (path) => ['ozoverbindzorg.nl'].concat(path.split('/').filter(Boolean)).join(' › ');
+    const cleanTitle = (t) => {
+      const parts = t.split(/\s+\|\s+/).map((x) => x.trim()).filter((x) => x && !/^OZO( ?Verbindzorg)?$/i.test(x));
+      return parts[0] || t.trim();
+    };
+
+    // Hoofdtekst van een pagina, zonder menu, zoekpaneel, footer, cookiebanner en scripts
+    function mainText(doc) {
+      doc.querySelectorAll('script,style,noscript,svg,nav,.mega-nav_wrap,[data-search-panel],.footer_v2,footer,[fs-cc],.fs-cc-banner_component,.fs-cc-prefs_component,.w-embed,[aria-hidden="true"],.w-condition-invisible,[class*="testimonial"],.dg-filter,[data-hpg2],.logo_balls').forEach((n) => n.remove());
+      const main = doc.querySelector('main') || doc.querySelector('.main-wrapper') || doc.body;
+      // Elk blok (kop, alinea, knop) als losse zin afsluiten, zodat snippets netjes beginnen
+      main.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,div,dt,dd,td,th,label,button').forEach((el) => el.append(doc.createTextNode(' ¶ ')));
+      return (main.textContent || '').replace(/\s+/g, ' ')
+        .replace(/([.!?:…;,])\s*(¶\s*)+/g, '$1 ')
+        .replace(/\s*(¶\s*)+/g, '. ')
+        .replace(/^[.\s]+/, '').trim();
+    }
+    function snippet(text) {
+      const n = norm(text);
+      // Alle treffers; kies de eerste in een echte zin (geen los label zoals een tab of knop)
+      const hits = [];
+      terms.forEach((t) => { let i = n.indexOf(t); while (i > -1 && hits.length < 60) { hits.push(i); i = n.indexOf(t, i + t.length); } });
+      if (!hits.length) return '';
+      hits.sort((a, b) => a - b);
+      const bounds = (at) => {
+        const s0 = text.lastIndexOf('. ', at - 1);
+        const s = s0 < 0 ? 0 : s0 + 2;
+        const e0 = text.indexOf('. ', at);
+        return [s, e0 < 0 ? text.length : e0 + 1];
+      };
+      let at = hits.find((h) => { const [s, e] = bounds(h); return e - s >= 50; });
+      if (at === undefined) at = hits[0];
+      let [start] = bounds(at);
+      if (at - start > 120) start = text.indexOf(' ', at - 90) + 1;
+      let out = text.slice(start, start + 220);
+      if (start + 220 < text.length) out = out.replace(/\s+\S*$/, '') + '…';
+      return esc(out).replace(reTerms, '<mark>$1</mark>');
+    }
+    const CACHE = 'sr-page:';
+    async function fetchPage(url) {
+      try { const c = sessionStorage.getItem(CACHE + url); if (c) return JSON.parse(c); } catch (e) {}
+      const html = await fetch(url, { credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : ''));
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const desc = (doc.querySelector('meta[name="description"]') || {}).content || '';
+      const data = { desc, text: mainText(doc).slice(0, 30000) };
+      try { sessionStorage.setItem(CACHE + url, JSON.stringify(data)); } catch (e) {}
+      return data;
+    }
+
+    // 1. Webflow-resultaten uitlezen
+    const seen = new Set();
+    const pages = [...root.querySelectorAll('.search-result-item')].map((item) => {
+      const a = item.querySelector('a[href]');
+      if (!a) return null;
+      const url = new URL(a.getAttribute('href'), location.origin);
+      const path = url.pathname;
+      if (seen.has(path) || /^\/(search|bedankt|old|testpage)(\/|$)/.test(path)) return null;
+      seen.add(path);
+      return { path, title: cleanTitle(a.textContent || ''), cat: categorize(path) };
+    }).filter(Boolean);
+    // Titel-treffers eerst
+    pages.sort((a, b) => (terms.some((t) => norm(b.title).includes(t)) ? 1 : 0) - (terms.some((t) => norm(a.title).includes(t)) ? 1 : 0));
+
+    // 2. Kaarten tekenen (snippet laadt erna)
+    function makeCard(p, i) {
+      let card;
+      if (tplCard) card = tplCard.cloneNode(true);
+      else {
+        card = document.createElement('a');
+        card.innerHTML = '<div><div class="sr-card_top"><span class="sr-tag"></span><span class="sr-crumb"></span></div><h3 class="sr-card_title"></h3><p class="sr-card_text"></p></div><div class="sr-card_arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>';
+        card.className = 'sr-card';
+      }
+      card.removeAttribute('data-sr-card-template');
+      card.setAttribute('href', p.path);
+      card.style.setProperty('--i', i);
+      card.dataset.group = p.cat.group;
+      const tag = card.querySelector('.sr-tag');
+      tag.textContent = p.cat.tag;
+      if (p.cat.mod) tag.classList.add(p.cat.mod);
+      card.querySelector('.sr-crumb').textContent = crumbOf(p.path);
+      card.querySelector('.sr-card_title').textContent = p.title;
+      card.classList.add('is-loading');
+      card.querySelector('.sr-card_text').textContent = 'Laden…';
+      list.appendChild(card);
+      p.card = card;
+    }
+    pages.forEach(makeCard);
+
+    // 3. FAQ ophalen en scoren
+    async function loadFaq() {
+      if (!faqList) return 0;
+      const html = await fetch('/faq', { credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : '')).catch(() => '');
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const hits = [];
+      const qSeen = new Set();
+      doc.querySelectorAll('.dg-faq_item').forEach((it) => {
+        const qEl = it.querySelector('.dg-faq_question');
+        const aEl = it.querySelector('.dg-faq_answer');
+        if (!qEl || !aEl) return;
+        const q = qEl.textContent.replace(/\s+/g, ' ').trim();
+        if (qSeen.has(q)) return;
+        qSeen.add(q);
+        const nq = norm(q), na = norm(aEl.textContent);
+        let score = 0;
+        terms.forEach((t) => { if (nq.includes(t)) score += 3; if (na.includes(t)) score += 1; });
+        if (!score) return;
+        const grp = it.closest('.faq_group');
+        const top = grp && grp.previousElementSibling;
+        const g = top && top.querySelector('h2,h3');
+        hits.push({ q, aEl, score, group: g ? g.textContent.trim() : '' });
+      });
+      hits.sort((a, b) => b.score - a.score);
+      hits.slice(0, 4).forEach((h) => {
+        let d;
+        if (tplFaq) d = tplFaq.cloneNode(true);
+        else {
+          d = document.createElement('details');
+          d.className = 'sr-faq_item';
+          d.innerHTML = '<summary class="sr-faq_q"><span><span class="sr-faq_group"></span><span class="sr-faq_qtext"></span></span><span class="sr-faq_plus" aria-hidden="true"></span></summary><div class="sr-faq_a"></div>';
+        }
+        d.removeAttribute('data-sr-faq-template');
+        d.open = false;
+        d.querySelector('.sr-faq_group').textContent = h.group;
+        d.querySelector('.sr-faq_qtext').innerHTML = esc(h.q).replace(reTerms, '<mark>$1</mark>');
+        const a = d.querySelector('.sr-faq_a');
+        a.innerHTML = '';
+        const src = h.aEl.querySelector('.w-richtext') || h.aEl;
+        [...src.childNodes].forEach((n) => a.appendChild(document.importNode(n, true)));
+        a.querySelectorAll('p').forEach((p) => { if (!p.textContent.replace(/[\s\u200d]/g, '')) p.remove(); });
+        a.querySelectorAll('a[href]').forEach((l) => { if (/^https?:/.test(l.getAttribute('href')) && !l.href.includes(location.host)) l.target = '_blank'; });
+        faqList.appendChild(d);
+      });
+      if (hits.length) root.setAttribute('data-sr-has-faq', '');
+      return Math.min(hits.length, 4);
+    }
+
+    // 4. Snippets + valse treffers wegfilteren
+    async function enrich() {
+      let idx = 0;
+      async function worker() {
+        while (idx < pages.length) {
+          const p = pages[idx++];
+          try {
+            const d = await fetchPage(p.path);
+            const s = snippet(d.text);
+            if (!s && !terms.some((t) => norm(p.title + ' ' + d.desc).includes(t))) { p.card.remove(); p.gone = true; continue; }
+            p.card.querySelector('.sr-card_text').innerHTML = s || esc(d.desc);
+          } catch (e) {
+            p.card.querySelector('.sr-card_text').textContent = '';
+          }
+          p.card.classList.remove('is-loading');
+        }
+      }
+      await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
+    }
+
+    function render(faqN) {
+      const live = pages.filter((p) => !p.gone);
+      const total = live.length;
+      if (!total && !faqN) {
+        root.setAttribute('data-sr-state', 'empty');
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+      root.setAttribute('data-sr-state', 'results');
+      const parts = [];
+      if (total) parts.push('<strong>' + total + '</strong> ' + (total === 1 ? 'pagina' : "pagina's"));
+      if (faqN) parts.push('<strong>' + faqN + '</strong> ' + (faqN === 1 ? 'antwoord' : 'antwoorden'));
+      if (countEl) countEl.innerHTML = parts.join(' en ') + ' gevonden';
+      const pagesWrap = root.querySelector('[data-sr-pages]');
+      if (pagesWrap) pagesWrap.toggleAttribute('data-sr-none', !total);
+      // Filters
+      if (!filtersEl) return;
+      filtersEl.innerHTML = '';
+      const counts = {};
+      live.forEach((p) => { counts[p.cat.group] = (counts[p.cat.group] || 0) + 1; });
+      const keys = Object.keys(GROUPS).filter((k) => counts[k]);
+      if (keys.length < 2) return;
+      const btns = [];
+      const mk = (key, label, n) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sr-filter';
+        b.innerHTML = esc(label) + ' <span class="sr-filter_n">' + n + '</span>';
+        b.setAttribute('aria-pressed', key === 'all' ? 'true' : 'false');
+        b.addEventListener('click', () => {
+          btns.forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+          live.forEach((p) => { p.card.hidden = key !== 'all' && p.cat.group !== key; });
+          root.toggleAttribute('data-sr-filtered', key !== 'all');
+        });
+        btns.push(b);
+        filtersEl.appendChild(b);
+      };
+      mk('all', 'Alles', total);
+      keys.forEach((k) => mk(k, GROUPS[k], counts[k]));
+    }
+
+    if (pages.length) root.setAttribute('data-sr-state', 'results');
+    Promise.all([loadFaq().catch(() => 0), enrich()]).then(([faqN]) => render(faqN));
+  }
+
+  // Zoekicoon: vergrootglas morpht naar een kruisje (ring plat tot de ene streep, steel zwaait
+  // naar de andere). Eén SVG met [data-search-morph]; volgt data-search-state op <html>.
+  function initSearchIconMorph() {
+    const svg = document.querySelector('[data-search-morph]');
+    if (!svg) return;
+    const ring = svg.querySelector('[data-morph-ring]');
+    const stem = svg.querySelector('[data-morph-stem]');
+    if (!ring || !stem) return;
+    const C = 10.5, R = 6.5, K = 0.5523 * R;
+    // Cirkel als 4 bezier-bogen vanaf linksboven (225°), met de klok mee
+    const ringPts = [];
+    for (let i = 0; i < 4; i++) {
+      const a0 = (225 + i * 90) * Math.PI / 180, a1 = a0 + Math.PI / 2;
+      const p0 = [C + R * Math.cos(a0), C + R * Math.sin(a0)];
+      const p1 = [C + R * Math.cos(a1), C + R * Math.sin(a1)];
+      if (!i) ringPts.push(p0);
+      ringPts.push([p0[0] - K * Math.sin(a0), p0[1] + K * Math.cos(a0)], [p1[0] + K * Math.sin(a1), p1[1] - K * Math.cos(a1)], p1);
+    }
+    // Doel: elk punt geprojecteerd op de diagonaal (5,5)-(19,19)
+    const flat = ringPts.map(([x, y]) => { const s = 12 + ((x + y) / 2 - C) / (R / Math.SQRT2) * 7; return [s, s]; });
+    const f = (v) => v.toFixed(2);
+    const ringD = (t) => {
+      const p = ringPts.map((q, i) => [q[0] + (flat[i][0] - q[0]) * t, q[1] + (flat[i][1] - q[1]) * t]);
+      let d = `M${f(p[0][0])} ${f(p[0][1])}`;
+      for (let i = 1; i < p.length; i += 3) d += `C${f(p[i][0])} ${f(p[i][1])} ${f(p[i + 1][0])} ${f(p[i + 1][1])} ${f(p[i + 2][0])} ${f(p[i + 2][1])}`;
+      return d;
+    };
+    // Steel: midden, hoek en lengte gaan van de handgreep naar de tweede streep van het kruis
+    const stemD = (t) => {
+      const cx = 17.8 + (12 - 17.8) * t, cy = cx;
+      const ang = (45 + 90 * t) * Math.PI / 180, len = (6.2 + (19.8 - 6.2) * t) / 2;
+      const dx = Math.cos(ang) * len, dy = Math.sin(ang) * len;
+      return `M${f(cx - dx)} ${f(cy - dy)}L${f(cx + dx)} ${f(cy + dy)}`;
+    };
+    const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let t = 0, from = 0, to = 0, start = 0, raf = 0;
+    const draw = (v) => { ring.setAttribute('d', ringD(v)); stem.setAttribute('d', stemD(v)); };
+    draw(0);
+    function step(now) {
+      if (!start) start = now;
+      const p = Math.min((now - start) / 420, 1);
+      t = from + (to - from) * ease(p);
+      draw(t);
+      if (p < 1) raf = requestAnimationFrame(step); else raf = 0;
+    }
+    const sync = () => {
+      const target = document.documentElement.getAttribute('data-search-state') === 'open' ? 1 : 0;
+      if (target === to && (raf || t === target)) return;
+      to = target;
+      if (reduce) { t = to; draw(t); return; }
+      from = t; start = 0;
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ['data-search-state'] });
+  }
+
   // ---------- Nieuwe site ----------
 
   // Menu verbergen bij naar beneden scrollen, terug bij omhoog scrollen (desktop én mobiel).
@@ -4253,6 +4553,8 @@
       initMegaNavDirectionalHover,
       initMegaNavImages,
       initSearchToggle,
+      initSearchIconMorph,
+      initSearchPage,
       initAdvancedFormValidation,
       initVimeoBackground,
       initHeroWave,
