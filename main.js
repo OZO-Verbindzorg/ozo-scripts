@@ -3201,7 +3201,7 @@
     // e = randen boven/rechts/onder/links: 0 recht, 1 nop naar buiten, -1 naar binnen
     var PIECES = [
       { t: 'client', l: 'Cliënt & naasten', o: [CX - PW, CY - PH], e: [0, -1, 1, 0], c: [16, 0, 0, 0], d: [-1, -1], r: -16 },
-      { t: 'pro', l: 'Zorgprofessionals', o: [CX, CY - PH], e: [0, 0, 1, 1], c: [0, 16, 0, 0], d: [1, -1], r: 14 },
+      { t: 'pro', l: 'Professionals', o: [CX, CY - PH], e: [0, 0, 1, 1], c: [0, 16, 0, 0], d: [1, -1], r: 14 },
       { t: 'gem', l: 'Gemeenten', o: [CX - PW, CY], e: [-1, -1, 0, 0], c: [0, 0, 0, 16], d: [-1, 1], r: 12 },
       { t: 'it', l: 'IT-partners', o: [CX, CY], e: [-1, 0, 0, 1], c: [0, 0, 16, 0], d: [1, 1], r: -12 }
     ];
@@ -3654,7 +3654,8 @@
         whenVisible(s1, tl1);
       }
 
-      // 3: een vraag, iemand typt, het antwoord komt binnen, met een hartje
+      // 3: een vraag, iemand typt, het antwoord komt binnen (het hartje is sinds 9 nov weg uit de tekening;
+      // staat het er nog in, dan speelt het gewoon mee)
       var s3 = root.querySelector('[data-hpw="3"]');
       if (s3) {
         var b1 = s3.querySelector('.hpw3-b1'), typing = s3.querySelector('.hpw3-typing');
@@ -3664,9 +3665,9 @@
           .fromTo(b1, { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: 0.45, ease: 'back.out(1.6)' }, 0.5)
           .fromTo(typing, { autoAlpha: 0, scale: 0.6, transformOrigin: '100% 50%' }, { autoAlpha: 1, scale: 1, duration: 0.3 }, 1.3)
           .to(typing, { autoAlpha: 0, duration: 0.2 }, 2.5)
-          .fromTo(b2, { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: 0.45, ease: 'back.out(1.6)' }, 2.55)
-          .fromTo(heart, { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.45, ease: 'back.out(3)' }, 3.4)
-          .to([b1, b2, heart], { autoAlpha: 0, duration: 0.4 }, 6.6)
+          .fromTo(b2, { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: 0.45, ease: 'back.out(1.6)' }, 2.55);
+        if (heart) tl3.fromTo(heart, { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.45, ease: 'back.out(3)' }, 3.4);
+        tl3.to(heart ? [b1, b2, heart] : [b1, b2], { autoAlpha: 0, duration: 0.4 }, 6.6)
           .to({}, { duration: 0.5 });
         whenVisible(s3, tl3);
       }
@@ -3967,7 +3968,7 @@
   }
 
   // ---------- Ga verder als: kaarten met keuzemenu (hp-go) ----------
-  // Homepage, Over ons en Onze missie ([data-hpg2], Webflow). Cliënt & naasten en Zorgprofessional
+  // Homepage, Over ons en Onze missie ([data-hpg2], Webflow). Cliënt & naasten en Professional
   // (.hpg2-card) openen een menu in de kaart (mobiel: uitklapper eronder); Gemeenten en IT-partner
   // zijn gewone links. Eén kaart tegelijk open; klikken ernaast of Escape sluit.
   function initHpGo() {
