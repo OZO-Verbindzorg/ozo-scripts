@@ -272,7 +272,7 @@
   }
 
   // Zoekpagina: Webflow-resultaten als OZO-kaarten, echte snippets (zonder menu/footer-tekst),
-  // valse treffers (term alleen in menu/footer) eruit, FAQ-antwoorden erbij, filters en lege staat.
+  // valse treffers (term alleen in menu/footer) eruit, FAQ-antwoorden als vangnet, filters en lege staat.
   function initSearchPage() {
     const root = document.querySelector('[data-sr]');
     if (!root) return;
@@ -511,7 +511,10 @@
     }
 
     if (pages.length) root.setAttribute('data-sr-state', 'results');
-    Promise.all([loadFaq().catch(() => 0), enrich()]).then(([faqN]) => render(faqN));
+    // Veelgestelde vragen alleen als vangnet: pas tonen als geen enkele pagina overblijft
+    enrich()
+      .then(() => (pages.some((p) => !p.gone) ? 0 : loadFaq().catch(() => 0)))
+      .then((faqN) => render(faqN));
   }
 
   // Zoekicoon: vergrootglas morpht naar een kruisje (ring plat tot de ene streep, steel zwaait
