@@ -3537,6 +3537,7 @@
       [1, 'Heeft iemand de huisarts al gebeld?'],
       [0, 'Ik hoor alles pas achteraf.'],
       [3, 'Weer twintig minuten in de wacht…'],
+      [8, 'Zijn de ouders/verzorgers al geïnformeerd?'],
       [4, 'Klopt deze medicatielijst nog?'],
       [2, 'Wie heeft het laatste overzicht?']
     ];
