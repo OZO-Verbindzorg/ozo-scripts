@@ -3503,7 +3503,7 @@
     var PAIRS = [[0, 3], [1, 4], [2, 6], [5, 1], [7, 2], [6, 0], [3, 5], [4, 7], [2, 1], [0, 5], [8, 4], [8, 7]];
     // e = randen boven/rechts/onder/links: 0 recht, 1 nop naar buiten, -1 naar binnen
     var PIECES = [
-      { t: 'client', l: 'Cliënt & naasten', o: [CX - PW, CY - PH], e: [0, -1, 1, 0], c: [16, 0, 0, 0], d: [-1, -1], r: -16 },
+      { t: 'client', l: 'Cliënt & familie', o: [CX - PW, CY - PH], e: [0, -1, 1, 0], c: [16, 0, 0, 0], d: [-1, -1], r: -16 },
       { t: 'pro', l: 'Professionals', o: [CX, CY - PH], e: [0, 0, 1, 1], c: [0, 16, 0, 0], d: [1, -1], r: 14 },
       { t: 'gem', l: 'Gemeenten', o: [CX - PW, CY], e: [-1, -1, 0, 0], c: [0, 0, 0, 16], d: [-1, 1], r: 12 },
       { t: 'it', l: 'IT-partners', o: [CX, CY], e: [-1, 0, 0, 1], c: [0, 0, 16, 0], d: [1, 1], r: -12 }
@@ -4271,7 +4271,7 @@
   }
 
   // ---------- Ga verder als: kaarten met keuzemenu (hp-go) ----------
-  // Homepage, Over ons en Onze missie ([data-hpg2], Webflow). Cliënt & naasten en Professional
+  // Homepage, Over ons en Onze missie ([data-hpg2], Webflow). Cliënt & familie en Professional
   // (.hpg2-card) openen een menu in de kaart (mobiel: uitklapper eronder); Gemeenten en IT-partner
   // zijn gewone links. Eén kaart tegelijk open; klikken ernaast of Escape sluit.
   function initHpGo() {
