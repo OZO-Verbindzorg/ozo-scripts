@@ -3539,7 +3539,10 @@
       [3, 'Weer twintig minuten in de wacht…'],
       [8, 'Zijn de ouders/verzorgers al geïnformeerd?'],
       [4, 'Klopt deze medicatielijst nog?'],
-      [2, 'Wie heeft het laatste overzicht?']
+      [5, 'Staat de inwoner centraal?'],
+      [2, 'Wie heeft het laatste overzicht?'],
+      [6, 'Wie neemt de nazorg over na ontslag?'],
+      [7, 'Is de overdracht uit het ziekenhuis al binnen?']
     ];
     var PAIRS = [[0, 3], [1, 4], [2, 6], [5, 1], [7, 2], [6, 0], [3, 5], [4, 7], [2, 1], [0, 5], [8, 4], [8, 7]];
     // e = randen boven/rechts/onder/links: 0 recht, 1 nop naar buiten, -1 naar binnen
