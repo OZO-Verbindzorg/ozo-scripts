@@ -2755,14 +2755,19 @@
     let dragged = false;
     let steering = false; // tijdens een klik/autoplay-beweging staat de actieve kaart al vast
 
-    // De rij loopt tot de randen van de sectie, zodat kaarten pas buiten beeld achteraan terugkomen
+    // De rij loopt tot de randen van de sectie, zodat kaarten pas buiten beeld achteraan terugkomen.
+    // De negatieve marges staan al native op .dg-testimonials_track (per breakpoint); hier alleen
+    // bijsturen als die afwijken (bv. schuifbalk), zodat de rij na het laden niet verspringt (CLS).
     function bleed() {
-      track.style.marginLeft = '';
-      track.style.marginRight = '';
+      const cs = getComputedStyle(track);
+      const ml = parseFloat(cs.marginLeft) || 0;
+      const mr = parseFloat(cs.marginRight) || 0;
       const s = section.getBoundingClientRect();
       const t = track.getBoundingClientRect();
-      track.style.marginLeft = `${s.left - t.left}px`;
-      track.style.marginRight = `${t.right - s.right}px`;
+      const left = ml + s.left - t.left;
+      const right = mr + t.right - s.right;
+      if (Math.abs(left - ml) > 0.5) track.style.marginLeft = `${left}px`;
+      if (Math.abs(right - mr) > 0.5) track.style.marginRight = `${right}px`;
     }
 
     function fill(i, value) {
