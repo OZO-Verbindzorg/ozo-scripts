@@ -1800,7 +1800,7 @@
   // Bewegende blobs (zoals de golven): [data-blob-morph="hero-bg|hero-photo|video"] krijgt een
   // gladde vorm als clip-path die langzaam meebeweegt. Vormen: straal per hoek (h) uit de
   // Figma-vormen, geschaald naar het element (aff). data-blob-amp (uitslag, standaard 0.04) en
-  // data-blob-speed (standaard 0.5) regelen de beweging. In de Designer en zonder JS toont de
+  // data-blob-speed (standaard 0.5) regelen de beweging; data-blob-square(-mobile) maakt hem vierkanter. In de Designer en zonder JS toont de
   // mask uit Webflow dezelfde vorm stil; dit script zet die mask uit zodra het overneemt.
   const BLOB_SHAPES = {
     'hero-bg': {
@@ -1854,12 +1854,40 @@
 
       const amp = parseFloat(el.getAttribute('data-blob-amp')) || 0.04;
       const speed = parseFloat(el.getAttribute('data-blob-speed')) || 0.5;
-      let ax, bx, ay, by, h, harmonics;
+      let ax, bx, ay, by, h, harmonics, square, box;
+      // Straal van de basisvorm (zonder beweging) op hoek a
+      const baseR = (a) => {
+        let r = h[0];
+        for (let k = 1; k <= harmonics; k++) {
+          r += h[2 * k - 1] * Math.cos(k * a) + h[2 * k] * Math.sin(k * a);
+        }
+        return r;
+      };
       const useShape = () => {
         const shape = pick();
         [ax, bx, ay, by] = shape.aff;
         h = shape.h;
         harmonics = (h.length - 1) / 2;
+        // Vierkanter maken: data-blob-square (0 = vorm uit Figma, 1 = afgeronde rechthoek),
+        // op mobiel eventueel data-blob-square-mobile. Trekt de vorm naar een afgeronde
+        // rechthoek binnen hetzelfde kader.
+        const sqMobile = el.getAttribute('data-blob-square-mobile');
+        square = Math.min(1, Math.max(0, parseFloat(
+          sqMobile !== null && mobile.matches ? sqMobile : el.getAttribute('data-blob-square')
+        ) || 0));
+        box = null;
+        if (square) {
+          let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+          for (let n = 0; n < STEPS; n++) {
+            const a = (n / STEPS) * Math.PI * 2;
+            const r = baseR(a);
+            const x = ax * r * Math.cos(a) + bx;
+            const y = ay * r * Math.sin(a) + by;
+            x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+            y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+          }
+          box = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, rx: (x1 - x0) / 2, ry: (y1 - y0) / 2 };
+        }
       };
       useShape();
       const seed = Math.random() * 100; // elke blob beweegt anders
@@ -1873,17 +1901,24 @@
         const pts = [];
         for (let n = 0; n < STEPS; n++) {
           const a = (n / STEPS) * Math.PI * 2;
-          let r = h[0];
-          for (let k = 1; k <= harmonics; k++) {
-            r += h[2 * k - 1] * Math.cos(k * a) + h[2 * k] * Math.sin(k * a);
-          }
+          let r = baseR(a);
           // Zachte golven die rond de vorm lopen (2, 3 en 4 bulten)
           r += h[0] * amp * (
             Math.sin(2 * a + t * 0.9) * 0.6 +
             Math.sin(3 * a - t * 0.7 + 1.3) * 0.3 +
             Math.sin(4 * a + t * 0.5 + 2.1) * 0.15
           );
-          pts.push([(ax * r * Math.cos(a) + bx) * width, (ay * r * Math.sin(a) + by) * height]);
+          let x = ax * r * Math.cos(a) + bx;
+          let y = ay * r * Math.sin(a) + by;
+          if (box) {
+            // Punt op een afgeronde rechthoek (superellips, exponent 3) onder dezelfde hoek
+            const c = Math.cos(a);
+            const s = Math.sin(a);
+            const k = Math.pow(Math.pow(Math.abs(c), 3) + Math.pow(Math.abs(s), 3), -1 / 3);
+            x += square * (box.cx + box.rx * c * k - x);
+            y += square * (box.cy + box.ry * s * k - y);
+          }
+          pts.push([x * width, y * height]);
         }
         el.style.clipPath = `path('${smoothClosedPath(pts)}')`;
       }
