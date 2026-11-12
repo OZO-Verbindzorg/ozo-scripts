@@ -3867,14 +3867,37 @@
       mm.add({ desk: '(min-width: 768px)', mob: '(max-width: 767px)' }, function (ctx) {
         // Desktop: tekst in het midden van het scherm. Mobiel: tekst onder het beeld.
         var vis = root.querySelector('.hp-story_visual');
-        // Mobiel: de tekst schuift eerst iets onder het beeld voordat de animatie verder gaat
-        var at = ctx.conditions.desk ? 'center center' : function () {
-          return 'top ' + Math.round(vis ? vis.offsetHeight - 48 : window.innerHeight * 0.5) + 'px';
-        };
-        ScrollTrigger.create({
-          trigger: stepEls[0], start: at, endTrigger: stepEls[2], end: at, animation: tl, scrub: 0.7,
-          onUpdate: function (self) { setActive(self.progress); }
-        });
+        if (ctx.conditions.desk) {
+          ScrollTrigger.create({
+            trigger: stepEls[0], start: 'center center', endTrigger: stepEls[2], end: 'center center', animation: tl, scrub: 0.7,
+            onUpdate: function (self) { setActive(self.progress); }
+          });
+        } else {
+          // Mobiel: elke overgang hoort bij zijn eigen stap. Hij begint pas als het kopje van die stap
+          // ("02 · Digitaal samen", "03 · De oplossing") op 68% van het scherm staat en is klaar
+          // als het net onder het beeld staat, zodat beeld en tekst gelijk oplopen.
+          var SEG = [[0.13, 0.35], [0.6, 0.86]];
+          var land = function () {
+            // onderkant van het sticky beeld (top is negatief), plus een kleine marge
+            var vb = vis ? vis.offsetHeight + (parseFloat(getComputedStyle(vis).top) || 0) : 0;
+            return 'top ' + Math.round(Math.max(vb + 24, window.innerHeight * 0.35)) + 'px';
+          };
+          var segs = [];
+          var sync = function () {
+            if (segs.length < 2) return;
+            var a = segs[0].progress, b = segs[1].progress;
+            var t = b > 0 ? lerp(SEG[1][0], SEG[1][1], b) : a >= 1 ? 0.5 : lerp(SEG[0][0], SEG[0][1], a);
+            setActive(t);
+            gsap.to(tl, { time: t, duration: 0.7, ease: 'power3.out', overwrite: true });
+          };
+          [1, 2].forEach(function (i) {
+            segs.push(ScrollTrigger.create({
+              trigger: stepEls[i].firstElementChild || stepEls[i], start: 'top 68%', end: land,
+              onUpdate: sync, onRefresh: sync
+            }));
+          });
+          sync();
+        }
         // De tekst vervaagt geleidelijk naar de randen, zonder sprong. Mobiel: onder het beeld en onderaan het scherm.
         // Desktop: boven- en onderaan het scherm, zodat de stap naast de puzzel al leesbaar is voordat hij het midden bereikt.
         var raf = 0;
