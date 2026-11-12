@@ -3700,7 +3700,9 @@
           dots: [svg('circle', { r: 3.4, fill: c.fg, opacity: 0 }, gDots), svg('circle', { r: 3.4, fill: c.fg, opacity: 0 }, gDots)],
           ring: [CX + 238 * K * Math.cos(n.ang * rad), CY + 200 * K * Math.sin(n.ang * rad)],
           pz: [CX + (n.p[0] - CX) * PZ, CY + (n.p[1] - CY) * PZ],
-          pos: n.a.slice(), s: 1, ph: i * 1.37
+          pos: n.a.slice(), s: 1, ph: i * 1.37,
+          // In de ring (stap 3) staat het label van de bovenste helft boven het poppetje, zodat de lijn naar OZO er niet doorheen loopt
+          up: Math.sin(n.ang * rad) < -0.01
         };
       });
       var chips = [0, 1].map(function () {
@@ -3741,7 +3743,8 @@
           o.fig.setAttribute('opacity', (1 - ic).toFixed(2));
           o.icon.setAttribute('opacity', ic.toFixed(2));
           var lo = (clamp(1 - e1 * 2.2) + clamp(e2 * 2.2 - 1.2)) * al;
-          names[i].style.cssText = 'left:' + f(x / W * 100) + '%;top:' + f((y - vy + AR * sc + 5) / H * 100) + '%;opacity:' + lo.toFixed(2);
+          var flip = o.up ? e2 : 0, off = AR * sc + 9;
+          names[i].style.cssText = 'left:' + f(x / W * 100) + '%;top:' + f((y - vy + off - 2 * off * flip) / H * 100) + '%;transform:translate(-50%,' + f(-100 * flip) + '%);opacity:' + lo.toFixed(2);
         });
 
         chaos.forEach(function (c, i) {
